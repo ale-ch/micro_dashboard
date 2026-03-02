@@ -149,7 +149,7 @@ df_coesione_fine_mergiato_cut <- prep_data_procom(df_coesione_fine_mergiato_cut,
 
 
 seed_number <- 123
-n_samples <- 100
+n_samples <- 1000
 
 set.seed(seed_number)
 sampled_comuni <- sample(comuni$PRO_COM_T, n_samples)

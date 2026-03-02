@@ -15,7 +15,7 @@ get_dfs <- function() {
 }
 
 ui <- fluidPage(
-  titlePanel("Map viewer"),
+  titlePanel("Municipal data dashboard"),
   
   tabsetPanel(
     
@@ -25,7 +25,8 @@ ui <- fluidPage(
                  selectInput("dataset", "Select dataset",
                              choices = names(get_dfs())),
                  uiOutput("var_select"),
-                 uiOutput("year_select_ui")
+                 uiOutput("year_select_ui"),
+                 uiOutput("comune_select_wrapper_1")
                ),
                mainPanel(
                  tmapOutput("map")
@@ -87,11 +88,48 @@ server <- function(input, output, session) {
     )
   })
   
-  output$map <- renderTmap({
-    req(df_selected(), input$variable)
+  
+  # 1. Initialize the empty widget
+  output$comune_select_wrapper_1 <- renderUI({
+    selectizeInput(
+      "selected_comune_map", 
+      "Search and Select comune:", 
+      choices = sort(unique(df_selected()$COMUNE)), # Leave empty initially
+      multiple = TRUE,
+      options = list(
+        placeholder = 'Type to search...',
+        loadThrottle = 100 # Wait 300ms after typing stops before searching
+      )
+    )
+  })
+  
+  # 2. Update the choices from the server side
+  observeEvent(df_selected(), {
+    req(df_selected())
+    choices <- sort(unique(df_selected()$COMUNE))
     
-    tm_shape(df_selected() %>% filter(year == input$year_select)) +
-      tm_polygons(input$variable)
+    updateSelectizeInput(
+      session, 
+      "selected_comune", 
+      choices = choices, 
+      server = TRUE # This enables fast searching/suggestions as you type
+    )
+  })
+  
+  
+  
+  output$map <- renderTmap({
+    req(df_selected(), input$variable, input$year_select)
+    
+    if (is.null(input$selected_comune_map)) {
+      tm_shape(df_selected() %>% filter(year == input$year_select)) +
+        tm_polygons(input$variable)
+    } else {
+      tm_shape(df_selected() %>% filter(year == input$year_select, COMUNE == input$selected_comune_map)) +
+        tm_polygons(input$variable)
+    }
+    
+    
   })
   
   # TIME SERIES
