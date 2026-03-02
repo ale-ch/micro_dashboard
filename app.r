@@ -24,7 +24,8 @@ ui <- fluidPage(
                sidebarPanel(
                  selectInput("dataset", "Select dataset",
                              choices = names(get_dfs())),
-                 uiOutput("var_select")
+                 uiOutput("var_select"),
+                 uiOutput("year_select_ui")
                ),
                mainPanel(
                  tmapOutput("map")
@@ -67,9 +68,29 @@ server <- function(input, output, session) {
                 choices = names(df_selected()))
   })
   
+  output$year_select_ui <- renderUI({
+    
+    req(df_selected())
+    req("year" %in% names(df_selected()))
+    
+    yrs <- sort(unique(df_selected()$year))
+    
+    selectInput(
+      inputId = "year_select",
+      label = "Select year",
+      choices = yrs,
+      selected = NULL,
+      multiple = FALSE,
+      selectize = TRUE,
+      width = NULL,
+      size = NULL
+    )
+  })
+  
   output$map <- renderTmap({
     req(df_selected(), input$variable)
-    tm_shape(df_selected()) +
+    
+    tm_shape(df_selected() %>% filter(year == input$year_select)) +
       tm_polygons(input$variable)
   })
   
@@ -102,19 +123,9 @@ server <- function(input, output, session) {
       sep = ""
     )
   })
+
   
-  #output$comune_select <- renderUI({
-  #  req(ts_df())
-  #  df <- ts_df()
-  #  
-  #  selectizeInput(
-  #    "selected_comune", 
-  #    "Search and Select comune:", 
-  #    choices = sort(unique(df$comune)), 
-  #    multiple = TRUE,
-  #    options = list(placeholder = 'Type to search...')
-  #  )
-  #})
+  
   
   # 1. Initialize the empty widget
   output$comune_select_wrapper <- renderUI({
