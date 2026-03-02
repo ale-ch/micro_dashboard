@@ -1,24 +1,15 @@
-# app.R
-
 library(shiny)
 library(tmap)
+library(plotly)
+library(dplyr)
 
-source('/Volumes/T7 Shield/FRES/DB_Comunale/LOAD_DATA.r')
+source('/Volumes/T7 Shield/FRES/DB_Comunale/micro_dashboard/PREP_DATA_TEST.r')
 
-tmap_mode("view")  # interactive
-
-# assume your spatial data frames are already loaded in the environment
-# e.g. df1, df2, df3 (all sf objects)
-
-#get_dfs <- function() {
-#  objs <- mget(ls(envir = .GlobalEnv), envir = .GlobalEnv)
-#  objs[sapply(objs, inherits, what = "sf")]
-#}
+tmap_mode("view")
 
 get_dfs <- function() {
   all_names <- ls(envir = .GlobalEnv)
   sampled_names <- grep("_sampled_map$", all_names, value = TRUE)
-  
   objs <- mget(sampled_names, envir = .GlobalEnv)
   objs[sapply(objs, inherits, what = "sf")]
 }
@@ -26,16 +17,34 @@ get_dfs <- function() {
 ui <- fluidPage(
   titlePanel("Map viewer"),
   
-  sidebarLayout(
-    sidebarPanel(
-      selectInput("dataset", "Select dataset",
-                  choices = names(get_dfs())),
-      
-      uiOutput("var_select")
+  tabsetPanel(
+    
+    tabPanel("Map",
+             sidebarLayout(
+               sidebarPanel(
+                 selectInput("dataset", "Select dataset",
+                             choices = names(get_dfs())),
+                 uiOutput("var_select")
+               ),
+               mainPanel(
+                 tmapOutput("map")
+               )
+             )
     ),
     
-    mainPanel(
-      tmapOutput("map")
+    tabPanel("Time series",
+             sidebarLayout(
+               sidebarPanel(
+                 selectInput("ts_dataset", "Select dataset",
+                             choices = names(get_dfs())),
+                 uiOutput("ts_var_select"),
+                 uiOutput("date_range_ui"),
+                 uiOutput("comune_select_wrapper")
+               ),
+               mainPanel(
+                 plotlyOutput("ts_plot")
+               )
+             )
     )
   )
 )
@@ -46,6 +55,7 @@ server <- function(input, output, session) {
     get_dfs()
   })
   
+  # MAP
   df_selected <- reactive({
     req(input$dataset)
     datasets()[[input$dataset]]
@@ -53,15 +63,110 @@ server <- function(input, output, session) {
   
   output$var_select <- renderUI({
     req(df_selected())
-    vars <- names(df_selected())
-    selectInput("variable", "Select variable", choices = vars)
+    selectInput("variable", "Select variable",
+                choices = names(df_selected()))
   })
   
   output$map <- renderTmap({
     req(df_selected(), input$variable)
-    
     tm_shape(df_selected()) +
       tm_polygons(input$variable)
+  })
+  
+  # TIME SERIES
+  ts_df <- reactive({
+    req(input$ts_dataset)
+    datasets()[[input$ts_dataset]]
+  })
+  
+  output$ts_var_select <- renderUI({
+    req(ts_df())
+    numeric_vars <- names(ts_df())[sapply(ts_df(), is.numeric)]
+    selectInput("ts_variable", "Select variable",
+                choices = numeric_vars)
+  })
+  
+  output$date_range_ui <- renderUI({
+    req(ts_df())
+    req("year" %in% names(ts_df()))
+    
+    yrs <- sort(unique(ts_df()$year))
+    
+    sliderInput(
+      "date_range",
+      "Select year range",
+      min = min(yrs),
+      max = max(yrs),
+      value = c(min(yrs), max(yrs)),
+      step = 1,
+      sep = ""
+    )
+  })
+  
+  #output$comune_select <- renderUI({
+  #  req(ts_df())
+  #  df <- ts_df()
+  #  
+  #  selectizeInput(
+  #    "selected_comune", 
+  #    "Search and Select comune:", 
+  #    choices = sort(unique(df$comune)), 
+  #    multiple = TRUE,
+  #    options = list(placeholder = 'Type to search...')
+  #  )
+  #})
+  
+  # 1. Initialize the empty widget
+  output$comune_select_wrapper <- renderUI({
+    selectizeInput(
+      "selected_comune", 
+      "Search and Select comune:", 
+      choices = sort(unique(ts_df()$COMUNE)), # Leave empty initially
+      multiple = TRUE,
+      options = list(
+        placeholder = 'Type to search...',
+        loadThrottle = 100 # Wait 300ms after typing stops before searching
+      )
+    )
+  })
+  
+  # 2. Update the choices from the server side
+  observeEvent(ts_df(), {
+    req(ts_df())
+    choices <- sort(unique(ts_df()$COMUNE))
+    
+    updateSelectizeInput(
+      session, 
+      "selected_comune", 
+      choices = choices, 
+      server = TRUE # This enables fast searching/suggestions as you type
+    )
+  })
+  
+  output$ts_plot <- renderPlotly({
+    # Use req() to ensure selected_comune exists before plotting
+    req(ts_df(), input$ts_variable, input$date_range, input$selected_comune)
+    
+    df <- ts_df() %>%
+      filter(
+        year >= input$date_range[1],
+        year <= input$date_range[2],
+        COMUNE %in% input$selected_comune
+      ) %>%
+      arrange(year)
+    
+    plot_ly(
+      df,
+      x = ~year,
+      y = as.formula(paste0("~`", input$ts_variable, "`")),
+      color = ~COMUNE,
+      type = "scatter",
+      mode = "lines+markers"
+    ) %>%
+      layout(
+        xaxis = list(title = "Year", tickformat = "d"),
+        yaxis = list(title = input$ts_variable)
+      )
   })
 }
 
