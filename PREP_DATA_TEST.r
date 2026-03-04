@@ -210,6 +210,8 @@ merge_map_data <- function(df, map_data, merge_col = "PRO_COM_T") {
 comuni_sampled <- comuni %>% 
   filter(PRO_COM_T %in% sampled_comuni)
 
+
+# OUTPUT DATASETS
 addetti_TOT_sampled_map <- merge_map_data(addetti_TOT_sampled, comuni_sampled)
 Altitudine_TOT_2014_2022_sampled_map <- merge_map_data(Altitudine_TOT_2014_2022_sampled, comuni_sampled)
 panel_italiana_sampled_map <- merge_map_data(panel_italiana_sampled, comuni_sampled)
@@ -222,6 +224,8 @@ comuni_stats_all_sampled_map <- merge_map_data(comuni_stats_all_sampled, comuni_
 amministrazioni_comunali_sampled_map <- merge_map_data(amministrazioni_comunali_sampled, comuni_sampled, merge_col = "PRO_COM")
 df_coesione_fine_mergiato_cut_sampled_map <- merge_map_data(df_coesione_fine_mergiato_cut_sampled, comuni_sampled, merge_col = "PRO_COM")
 MAQUI_sampled_map <- merge_map_data(MAQUI_sampled, comuni_sampled, merge_col = "PRO_COM")
+
+
 
 
 

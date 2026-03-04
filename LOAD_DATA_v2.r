@@ -173,7 +173,8 @@ data_final <- left_join(
 ) %>% 
   select(
     all_of(1:13),
-    where(is.numeric)
+    where(is.numeric),
+    -cod_comune
   ) 
 
 
@@ -182,7 +183,7 @@ data_final <- left_join(
 
 data_final <- data_final %>% rename(
   `Number of workers` = `n_workers`,
-  `Municipality code` = `cod_comune`,
+  # `Municipality code` = `cod_comune`,
   `Altitude of the center in meters` = `altitudine_del_centro_metri`,
   `Coastal municipality` = `comune_litoraneo`,
   `Coastal zones` = `zone_costiere`,
@@ -341,3 +342,6 @@ data_final <- data_final %>% rename(
 # data_final  → single sf object with all variables + geometry
 
 rm(list = setdiff(ls(), "data_final"))
+
+
+
