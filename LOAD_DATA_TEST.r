@@ -115,11 +115,11 @@ data_list$MAQUI <-
   prep_procom_t(data_list$MAQUI, codice_comune, anno)
 
 # ---------------- SAMPLING ----------------
-draw_samples <- FALSE
+draw_samples <- TRUE
 
 if(isTRUE(draw_samples)) {
   set.seed(123)
-  sampled_codes_T <- sample(comuni$PRO_COM_T, 5)
+  sampled_codes_T <- sample(comuni$PRO_COM_T, 100)
   
   comuni_sampled_T <- comuni %>%
     filter(PRO_COM_T %in% sampled_codes_T)
@@ -166,7 +166,7 @@ data_merged <- Reduce(
   as.data.frame()
 
 # ---------------- STEP 4 ----------------
-data_final <- left_join(
+municipal_data_merged <- left_join(
   comuni_sampled_T,
   data_merged,
   by = intersect(names(comuni_meta), names(data_merged))
@@ -181,7 +181,7 @@ data_final <- left_join(
 
 
 
-data_final <- data_final %>% rename(
+municipal_data_merged <- municipal_data_merged %>% rename(
   `Number of workers` = `n_workers`,
   # `Municipality code` = `cod_comune`,
   `Altitude of the center in meters` = `altitudine_del_centro_metri`,
@@ -341,7 +341,5 @@ data_final <- data_final %>% rename(
 # RESULT:
 # data_final  → single sf object with all variables + geometry
 
-rm(list = setdiff(ls(), "data_final"))
-
-
+rm(list = setdiff(ls(), "municipal_data_merged"))
 

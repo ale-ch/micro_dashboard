@@ -3,7 +3,8 @@ library(tmap)
 library(plotly)
 library(dplyr)
 
-source('/Volumes/T7 Shield/FRES/DB_Comunale/micro_dashboard/PREP_DATA_TEST.r')
+# source('/Volumes/T7 Shield/FRES/DB_Comunale/micro_dashboard/LOAD_DATA.r')
+source('/Volumes/T7 Shield/FRES/DB_Comunale/micro_dashboard/tests/LOAD_DATA_TEST.r')
 
 tmap_mode("view")
 
@@ -22,8 +23,6 @@ ui <- fluidPage(
     tabPanel("Map",
              sidebarLayout(
                sidebarPanel(
-                 selectInput("dataset", "Select dataset",
-                             choices = names(get_dfs())),
                  uiOutput("var_select"),
                  uiOutput("year_select_ui"),
                  uiOutput("comune_select_wrapper_1")
@@ -37,8 +36,6 @@ ui <- fluidPage(
     tabPanel("Time series",
              sidebarLayout(
                sidebarPanel(
-                 selectInput("ts_dataset", "Select dataset",
-                             choices = names(get_dfs())),
                  uiOutput("ts_var_select"),
                  uiOutput("date_range_ui"),
                  uiOutput("comune_select_wrapper")
@@ -52,29 +49,19 @@ ui <- fluidPage(
 )
 
 server <- function(input, output, session) {
-  
-  datasets <- reactive({
-    get_dfs()
-  })
-  
   # MAP
-  df_selected <- reactive({
-    req(input$dataset)
-    datasets()[[input$dataset]]
-  })
-  
   output$var_select <- renderUI({
-    req(df_selected())
+    req(municipal_data_merged)
     selectInput("variable", "Select variable",
-                choices = names(df_selected()))
+                choices = names(municipal_data_merged))
   })
   
   output$year_select_ui <- renderUI({
     
-    req(df_selected())
-    req("year" %in% names(df_selected()))
+    req(municipal_data_merged)
+    req("year" %in% names(municipal_data_merged))
     
-    yrs <- sort(unique(df_selected()$year))
+    yrs <- sort(unique(municipal_data_merged$year))
     
     selectInput(
       inputId = "year_select",
@@ -94,7 +81,7 @@ server <- function(input, output, session) {
     selectizeInput(
       "selected_comune_map", 
       "Search and Select comune:", 
-      choices = sort(unique(df_selected()$COMUNE)), # Leave empty initially
+      choices = sort(unique(municipal_data_merged$COMUNE)), # Leave empty initially
       multiple = TRUE,
       options = list(
         placeholder = 'Type to search...',
@@ -104,9 +91,9 @@ server <- function(input, output, session) {
   })
   
   # 2. Update the choices from the server side
-  observeEvent(df_selected(), {
-    req(df_selected())
-    choices <- sort(unique(df_selected()$COMUNE))
+  observeEvent(municipal_data_merged, {
+    req(municipal_data_merged)
+    choices <- sort(unique(municipal_data_merged$COMUNE))
     
     updateSelectizeInput(
       session, 
@@ -119,13 +106,13 @@ server <- function(input, output, session) {
   
   
   output$map <- renderTmap({
-    req(df_selected(), input$variable, input$year_select)
+    req(municipal_data_merged, input$variable, input$year_select)
     
     if (is.null(input$selected_comune_map)) {
-      tm_shape(df_selected() %>% filter(year == input$year_select)) +
+      tm_shape(municipal_data_merged %>% filter(year == input$year_select)) +
         tm_polygons(input$variable)
     } else {
-      tm_shape(df_selected() %>% filter(year == input$year_select, COMUNE == input$selected_comune_map)) +
+      tm_shape(municipal_data_merged %>% filter(year == input$year_select, COMUNE == input$selected_comune_map)) +
         tm_polygons(input$variable)
     }
     
@@ -133,23 +120,18 @@ server <- function(input, output, session) {
   })
   
   # TIME SERIES
-  ts_df <- reactive({
-    req(input$ts_dataset)
-    datasets()[[input$ts_dataset]]
-  })
-  
   output$ts_var_select <- renderUI({
-    req(ts_df())
-    numeric_vars <- names(ts_df())[sapply(ts_df(), is.numeric)]
+    req(municipal_data_merged)
+    numeric_vars <- names(municipal_data_merged)[sapply(municipal_data_merged, is.numeric)]
     selectInput("ts_variable", "Select variable",
                 choices = numeric_vars)
   })
   
   output$date_range_ui <- renderUI({
-    req(ts_df())
-    req("year" %in% names(ts_df()))
+    req(municipal_data_merged)
+    req("year" %in% names(municipal_data_merged))
     
-    yrs <- sort(unique(ts_df()$year))
+    yrs <- sort(unique(municipal_data_merged$year))
     
     sliderInput(
       "date_range",
@@ -170,7 +152,7 @@ server <- function(input, output, session) {
     selectizeInput(
       "selected_comune", 
       "Search and Select comune:", 
-      choices = sort(unique(ts_df()$COMUNE)), # Leave empty initially
+      choices = sort(unique(municipal_data_merged$COMUNE)), # Leave empty initially
       multiple = TRUE,
       options = list(
         placeholder = 'Type to search...',
@@ -180,9 +162,9 @@ server <- function(input, output, session) {
   })
   
   # 2. Update the choices from the server side
-  observeEvent(ts_df(), {
-    req(ts_df())
-    choices <- sort(unique(ts_df()$COMUNE))
+  observeEvent(municipal_data_merged, {
+    req(municipal_data_merged)
+    choices <- sort(unique(municipal_data_merged$COMUNE))
     
     updateSelectizeInput(
       session, 
@@ -194,9 +176,9 @@ server <- function(input, output, session) {
   
   output$ts_plot <- renderPlotly({
     # Use req() to ensure selected_comune exists before plotting
-    req(ts_df(), input$ts_variable, input$date_range, input$selected_comune)
+    req(municipal_data_merged, input$ts_variable, input$date_range, input$selected_comune)
     
-    df <- ts_df() %>%
+    df <- municipal_data_merged %>%
       filter(
         year >= input$date_range[1],
         year <= input$date_range[2],
