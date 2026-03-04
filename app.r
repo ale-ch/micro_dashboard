@@ -8,13 +8,6 @@ source('/Volumes/T7 Shield/FRES/DB_Comunale/micro_dashboard/tests/LOAD_DATA_TEST
 
 tmap_mode("view")
 
-get_dfs <- function() {
-  all_names <- ls(envir = .GlobalEnv)
-  sampled_names <- grep("_sampled_map$", all_names, value = TRUE)
-  objs <- mget(sampled_names, envir = .GlobalEnv)
-  objs[sapply(objs, inherits, what = "sf")]
-}
-
 ui <- fluidPage(
   titlePanel("Municipal data dashboard"),
   
