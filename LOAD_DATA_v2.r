@@ -122,11 +122,11 @@ data_list$MAQUI <-
   prep_procom_t(data_list$MAQUI, codice_comune, anno)
 
 # ---------------- SAMPLING ----------------
-comuni_sampled_T <- comuni
+comuni <- comuni
 
 # ---------------- STEP 1 ----------------
 # Drop geometry → pure data.frame
-comuni_meta <- comuni_sampled_T %>%
+comuni_meta <- comuni %>%
   st_drop_geometry() %>%
   as.data.frame()
 
@@ -163,7 +163,7 @@ data_merged <- Reduce(
 
 # ---------------- STEP 4 ----------------
 municipal_data_merged <- left_join(
-  comuni_sampled_T,
+  comuni,
   data_merged,
   by = intersect(names(comuni_meta), names(data_merged))
 ) %>% 
@@ -333,6 +333,8 @@ municipal_data_merged <- municipal_data_merged %>% rename(
   `Municipal Administrative Quality Index` = `maqi`
 )
 
+municipal_data_NO_NUTS <- municipal_data_merged
+
 
 # RESULT:
 # data_final  → single sf object with all variables + geometry
@@ -413,6 +415,33 @@ municipal_data_nuts <- left_join(municipal_data_merged, nuts_munic_codes, by = "
     NUTS2 = NUTS2_Code,
     NUTS1 = NUTS1_Code,
     NUTS0 = NUTS0_Code,
+  )
+
+
+
+
+duplicated_codes <- municipal_data_nuts %>% 
+  group_by(PRO_COM_T) %>% 
+  reframe(
+    count = n()
+  ) %>% 
+  filter(count > 11)  %>% 
+  select(PRO_COM_T) %>% 
+  unname() %>% 
+  unlist()
+
+
+municipal_data_nuts_filtered <- municipal_data_nuts %>% 
+  filter(PRO_COM_T %in% duplicated_codes, !is.na(year)) %>% 
+  distinct(PRO_COM_T, year, .keep_all = TRUE)
+
+
+municipal_data_nuts <- municipal_data_nuts %>% 
+  filter(
+    !(PRO_COM_T %in% duplicated_codes)
+  ) %>% 
+  bind_rows(
+    municipal_data_nuts_filtered
   )
 
 
