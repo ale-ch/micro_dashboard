@@ -2,6 +2,7 @@ library(shiny)
 library(tmap)
 library(plotly)
 library(dplyr)
+library(DT)
 
 # source('/Volumes/T7 Shield/FRES/DB_Comunale/micro_dashboard/LOAD_DATA.r')
 # source('/Volumes/T7 Shield/FRES/DB_Comunale/micro_dashboard/tests/LOAD_DATA_TEST.r')
@@ -32,7 +33,8 @@ ui <- fluidPage(
                  radioButtons("aggregation", "Type of aggregation", choices = AGGREGATION_CHOICES, selected = "Median", inline = TRUE),
                ),
                mainPanel(
-                 tmapOutput("map")
+                 tmapOutput("map"),
+                 DTOutput("map_table")
                )
              )
     ),
@@ -127,10 +129,52 @@ server <- function(input, output, session) {
       }
     }
     
-    
-    
-    
   })
+  
+  
+  
+  map_table_data <- reactive({
+    req(municipal_data_merged, input$variable, input$year_select, input$level_map)
+    
+    if(input$level_map != "Municipal") {
+      aggregate_by_nuts(municipal_data_merged, input$level_map, VARIABLES_CHOICES, input$aggregation) %>% 
+        filter(year == input$year_select) %>% 
+        st_drop_geometry()
+    } else {
+      if (is.null(input$selected_comune_map)) {
+        municipal_data_merged %>% 
+          filter(year == input$year_select) %>% 
+          st_drop_geometry()
+      } else {
+        municipal_data_merged %>% 
+          filter(year == input$year_select, COMUNE == input$selected_comune_map) %>% 
+          st_drop_geometry()
+      }
+    }
+  })
+  
+  output$map_table <- DT::renderDT({
+    df <- map_table_data()
+    
+    validate(need(nrow(df) > 0, "No data available for the selected year/variable."))
+    
+    DT::datatable(
+      df,
+      rownames = FALSE,
+      options = list(
+        scrollX = TRUE,
+        pageLength = 20,
+        lengthMenu = list(
+          c(20, 50, 100, 500, -1),
+          c("20", "50", "100", "500", "All")
+        ),
+        dom = "flrtip"
+      )
+    )
+  })
+  
+  
+  
   
   # TIME SERIES
   output$ts_var_select <- renderUI({
