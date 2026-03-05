@@ -7,10 +7,12 @@ library(dplyr)
 # source('/Volumes/T7 Shield/FRES/DB_Comunale/micro_dashboard/tests/LOAD_DATA_TEST.r')
 
 source('/Volumes/T7 Shield/FRES/DB_Comunale/micro_dashboard/LOAD_DATA_v2.r')
-source("/Volumes/T7 Shield/FRES/DB_Comunale/micro_dashboard/compute_median_by_nuts.r")
+# source("/Volumes/T7 Shield/FRES/DB_Comunale/micro_dashboard/compute_median_by_nuts.r")
+source("/Volumes/T7 Shield/FRES/DB_Comunale/micro_dashboard/aggregate_by_nuts.r")
 
 
 LEVELS <- c("Municipal", "NUTS3", "NUTS2", "NUTS1", "NUTS0")
+AGGREGATION_CHOICES <- c("Mean", "Median", "Sum")
 VARIABLES_CHOICES <- names(municipal_data_merged)[14:164]
 
 tmap_mode("view")
@@ -27,6 +29,7 @@ ui <- fluidPage(
                  uiOutput("year_select_ui"),
                  uiOutput("comune_select_wrapper_1"),
                  radioButtons("level_map", "Granularity", choices = LEVELS, selected = "Municipal", inline = TRUE),
+                 radioButtons("aggregation", "Type of aggregation", choices = AGGREGATION_CHOICES, selected = "Median", inline = TRUE),
                ),
                mainPanel(
                  tmapOutput("map")
@@ -111,7 +114,7 @@ server <- function(input, output, session) {
     
     if(input$level_map != "Municipal") {
       tm_shape(
-        compute_median_by_nuts(municipal_data_merged, input$level_map, VARIABLES_CHOICES) 
+        aggregate_by_nuts(municipal_data_merged, input$level_map, VARIABLES_CHOICES, input$aggregation) 
         %>% filter(year == input$year_select)) +
         tm_polygons(input$variable)
     } else {
