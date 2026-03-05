@@ -417,6 +417,8 @@ municipal_data_nuts <- left_join(municipal_data_merged, nuts_munic_codes, by = "
 
 
 
+
+#### SAMPLING #####
 draw_samples <- TRUE
 if(isTRUE(draw_samples)) {
   set.seed(123)
