@@ -5,7 +5,12 @@ library(dplyr)
 
 # source('/Volumes/T7 Shield/FRES/DB_Comunale/micro_dashboard/LOAD_DATA.r')
 # source('/Volumes/T7 Shield/FRES/DB_Comunale/micro_dashboard/tests/LOAD_DATA_TEST.r')
+
 source('/Volumes/T7 Shield/FRES/DB_Comunale/micro_dashboard/LOAD_DATA_v2.r')
+source("/Volumes/T7 Shield/FRES/DB_Comunale/micro_dashboard/compute_median_by_nuts.r")
+
+
+LEVELS <- c("Municipal", "NUTS3", "NUTS2", "NUTS1", "NUTS0")
 
 tmap_mode("view")
 
@@ -19,7 +24,8 @@ ui <- fluidPage(
                sidebarPanel(
                  uiOutput("var_select"),
                  uiOutput("year_select_ui"),
-                 uiOutput("comune_select_wrapper_1")
+                 uiOutput("comune_select_wrapper_1"),
+                 radioButtons("level_map", "Granularity", choices = LEVELS, selected = "Municipal", inline = TRUE),
                ),
                mainPanel(
                  tmapOutput("map")
@@ -47,7 +53,7 @@ server <- function(input, output, session) {
   output$var_select <- renderUI({
     req(municipal_data_merged)
     selectInput("variable", "Select variable",
-                choices = names(municipal_data_merged))
+                choices = names(municipal_data_merged)[14:164])
   })
   
   output$year_select_ui <- renderUI({
@@ -100,15 +106,24 @@ server <- function(input, output, session) {
   
   
   output$map <- renderTmap({
-    req(municipal_data_merged, input$variable, input$year_select)
+    req(municipal_data_merged, input$variable, input$year_select, input$level_map)
     
-    if (is.null(input$selected_comune_map)) {
-      tm_shape(municipal_data_merged %>% filter(year == input$year_select)) +
+    if(input$level_map != "Municipal") {
+      tm_shape(
+        compute_median_by_nuts(municipal_data_merged, input$level_map) 
+        %>% filter(year == input$year_select)) +
         tm_polygons(input$variable)
     } else {
-      tm_shape(municipal_data_merged %>% filter(year == input$year_select, COMUNE == input$selected_comune_map)) +
-        tm_polygons(input$variable)
+      if (is.null(input$selected_comune_map)) {
+        tm_shape(municipal_data_merged %>% filter(year == input$year_select)) +
+          tm_polygons(input$variable)
+      } else {
+        tm_shape(municipal_data_merged %>% filter(year == input$year_select, COMUNE == input$selected_comune_map)) +
+          tm_polygons(input$variable)
+      }
     }
+    
+    
     
     
   })
