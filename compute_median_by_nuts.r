@@ -3,7 +3,7 @@
 # source("/Volumes/T7 Shield/FRES/DB_Comunale/micro_dashboard/merge_munic_data_nuts.r")
 # source("/Volumes/T7 Shield/FRES/DB_Comunale/micro_dashboard/LOAD_DATA_v2.r")
 
-compute_median_by_nuts <- function(municipal_data_nuts, nuts_code) {
+compute_median_by_nuts <- function(municipal_data_nuts, nuts_code, variables) {
   municipal_data_nuts %>%
     st_drop_geometry() %>% 
     group_by(
@@ -12,7 +12,7 @@ compute_median_by_nuts <- function(municipal_data_nuts, nuts_code) {
       year
     ) %>% 
     reframe(
-      across(14:163, \(x) median(x, na.rm = TRUE))
+      across(all_of(variables), \(x) median(x, na.rm = TRUE))
     ) %>% 
     filter(
       !is.na(.data[[nuts_code]])

@@ -111,7 +111,7 @@ server <- function(input, output, session) {
     
     if(input$level_map != "Municipal") {
       tm_shape(
-        compute_median_by_nuts(municipal_data_merged, input$level_map) 
+        compute_median_by_nuts(municipal_data_merged, input$level_map, VARIABLES_CHOICES) 
         %>% filter(year == input$year_select)) +
         tm_polygons(input$variable)
     } else {
