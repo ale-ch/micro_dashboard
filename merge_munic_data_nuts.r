@@ -1,5 +1,3 @@
-### QUALITY CONTROL ###
-
 #pacman::p_unload(pacman::p_loaded(), character.only = TRUE)
 # Check which packages are currently loaded
 # pacman::p_loaded()
