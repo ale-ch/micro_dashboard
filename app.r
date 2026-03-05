@@ -11,6 +11,7 @@ source("/Volumes/T7 Shield/FRES/DB_Comunale/micro_dashboard/compute_median_by_nu
 
 
 LEVELS <- c("Municipal", "NUTS3", "NUTS2", "NUTS1", "NUTS0")
+VARIABLES_CHOICES <- names(municipal_data_merged)[14:164]
 
 tmap_mode("view")
 
@@ -53,7 +54,7 @@ server <- function(input, output, session) {
   output$var_select <- renderUI({
     req(municipal_data_merged)
     selectInput("variable", "Select variable",
-                choices = names(municipal_data_merged)[14:164])
+                choices = VARIABLES_CHOICES)
   })
   
   output$year_select_ui <- renderUI({
@@ -133,7 +134,7 @@ server <- function(input, output, session) {
     req(municipal_data_merged)
     numeric_vars <- names(municipal_data_merged)[sapply(municipal_data_merged, is.numeric)]
     selectInput("ts_variable", "Select variable",
-                choices = numeric_vars)
+                choices = VARIABLES_CHOICES)
   })
   
   output$date_range_ui <- renderUI({
