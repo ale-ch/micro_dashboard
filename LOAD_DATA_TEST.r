@@ -3,6 +3,7 @@ library(dplyr)
 library(stringr)
 library(sf)
 library(purrr)
+library(tidyr)
 
 # ---------------- PATHS ----------------
 base_path  <- "/Volumes/T7 Shield/FRES/DB_Comunale"
