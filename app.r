@@ -110,51 +110,39 @@ server <- function(input, output, session) {
   })
   
   
-  
-  output$map <- renderTmap({
-    req(municipal_data_merged, input$variable, input$year_select, input$level_map)
-    
-    if(input$level_map != "Municipal") {
-      tm_shape(
-        aggregate_by_nuts(municipal_data_merged, input$level_map, VARIABLES_CHOICES, input$aggregation) 
-        %>% filter(year == input$year_select)) +
-        tm_polygons(input$variable)
-    } else {
-      if (is.null(input$selected_comune_map)) {
-        tm_shape(municipal_data_merged %>% filter(year == input$year_select)) +
-          tm_polygons(input$variable)
-      } else {
-        tm_shape(municipal_data_merged %>% filter(year == input$year_select, COMUNE == input$selected_comune_map)) +
-          tm_polygons(input$variable)
-      }
-    }
-    
-  })
-  
-  
-  
   map_table_data <- reactive({
     req(municipal_data_merged, input$variable, input$year_select, input$level_map)
     
     if(input$level_map != "Municipal") {
       aggregate_by_nuts(municipal_data_merged, input$level_map, VARIABLES_CHOICES, input$aggregation) %>% 
-        filter(year == input$year_select) %>% 
-        st_drop_geometry()
+        filter(year == input$year_select)
     } else {
       if (is.null(input$selected_comune_map)) {
         municipal_data_merged %>% 
-          filter(year == input$year_select) %>% 
-          st_drop_geometry()
+          filter(year == input$year_select)
       } else {
         municipal_data_merged %>% 
-          filter(year == input$year_select, COMUNE == input$selected_comune_map) %>% 
-          st_drop_geometry()
+          filter(year == input$year_select, COMUNE == input$selected_comune_map)
       }
     }
   })
   
+  
+  
+  output$map <- renderTmap({
+    req(map_table_data(), input$variable)
+  
+      tm_shape(map_table_data()) +
+        tm_polygons(input$variable)
+  })
+  
+  
+  
+
+  
   output$map_table <- DT::renderDT({
-    df <- map_table_data()
+    req(map_table_data())
+    df <- map_table_data() %>% st_drop_geometry()
     
     validate(need(nrow(df) > 0, "No data available for the selected year/variable."))
     
