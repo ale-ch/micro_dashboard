@@ -37,11 +37,6 @@ shapes_IT <- lapply(shapes, function(x) {
 })
 
 
-
-names(municipal_data_merged)
-
-
-
 nuts_munic_codes <- read_excel(nuts_munic_codes_file)
 nuts_munic_codes <- nuts_munic_codes %>% 
   standardize_names() %>% 
@@ -65,7 +60,6 @@ nuts_munic_codes_selected <- nuts_munic_codes_selected %>%
   )
 
 
-
 munic_data_nuts <- left_join(
   municipal_data_merged, 
   nuts_munic_codes_selected %>% select(-comune), 
@@ -80,19 +74,36 @@ munic_data_nuts <- left_join(
 
 
 
-nuts_code <- "NUTS0"
+nuts_code <- "NUTS1"
 
 munic_data_nuts %>%
   group_by(
-    all_of(nuts_code),
+    .data[[nuts_code]]
     #NUTS2_Code, 
-    year
+    # year
   ) %>% 
   reframe(
     across(14:163, \(x) median(x, na.rm = TRUE))
-  ) %>% View()
+  ) %>% 
+  filter(
+    !is.na(.data[[nuts_code]])
+  ) %>% 
+  View()
 
 
+municipal_data_nuts %>%
+  group_by(
+    .data[[nuts_code]]
+    #NUTS2_Code, 
+    # year
+  ) %>% 
+  reframe(
+    across(14:163, \(x) median(x, na.rm = TRUE))
+  ) %>% 
+  filter(
+    !is.na(.data[[nuts_code]])
+  ) %>% 
+  View()
 
 
 
