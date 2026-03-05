@@ -4,7 +4,8 @@ library(plotly)
 library(dplyr)
 
 # source('/Volumes/T7 Shield/FRES/DB_Comunale/micro_dashboard/LOAD_DATA.r')
-source('/Volumes/T7 Shield/FRES/DB_Comunale/micro_dashboard/tests/LOAD_DATA_TEST.r')
+# source('/Volumes/T7 Shield/FRES/DB_Comunale/micro_dashboard/tests/LOAD_DATA_TEST.r')
+source('/Volumes/T7 Shield/FRES/DB_Comunale/micro_dashboard/LOAD_DATA_v2.r')
 
 tmap_mode("view")
 

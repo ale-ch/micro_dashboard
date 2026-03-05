@@ -122,18 +122,7 @@ data_list$MAQUI <-
   prep_procom_t(data_list$MAQUI, codice_comune, anno)
 
 # ---------------- SAMPLING ----------------
-draw_samples <- FALSE
-
-if(isTRUE(draw_samples)) {
-  set.seed(123)
-  sampled_codes_T <- sample(comuni$PRO_COM_T, 100)
-  
-  comuni_sampled_T <- comuni %>%
-    filter(PRO_COM_T %in% sampled_codes_T)
-} else {
-  comuni_sampled_T <- comuni
-}
-
+comuni_sampled_T <- comuni
 
 # ---------------- STEP 1 ----------------
 # Drop geometry → pure data.frame
@@ -428,6 +417,17 @@ municipal_data_nuts <- left_join(municipal_data_merged, nuts_munic_codes, by = "
 
 
 
-rm(list = setdiff(ls(), c("municipal_data_nuts", "shapes_df_list")))
+draw_samples <- TRUE
+if(isTRUE(draw_samples)) {
+  set.seed(123)
+  sampled_codes <- sample(unique(municipal_data_nuts$PRO_COM_T), 100)
+  
+  municipal_data_nuts <- municipal_data_nuts %>%
+    filter(PRO_COM_T %in% sampled_codes)
+}
 
+municipal_data_merged <- municipal_data_nuts
+
+
+rm(list = setdiff(ls(), c("municipal_data_merged", "shapes_df_list")))
 
