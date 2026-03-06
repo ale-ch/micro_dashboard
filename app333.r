@@ -270,13 +270,15 @@ server <- function(input, output, session) {
   
   ts_table_data <- reactive({
     req(municipal_data_merged, input$ts_variable, input$date_range)
+    req(input$ts_comune_select) # Halts execution until a municipality is selected
     
-    df <- municipal_data_merged %>% filter(year >= input$date_range[1], year <= input$date_range[2])
-    
-    if (!is.null(input$ts_comune_select)) {
-      df <- df %>% filter(COMUNE %in% input$ts_comune_select)
-    }
-    df %>% arrange(year)
+    municipal_data_merged %>% 
+      filter(
+        year >= input$date_range[1], 
+        year <= input$date_range[2],
+        COMUNE %in% input$ts_comune_select
+      ) %>% 
+      arrange(year)
   })
   
   output$ts_plot <- renderPlotly({
