@@ -460,5 +460,18 @@ if(isTRUE(draw_samples)) {
 municipal_data_merged <- municipal_data_nuts
 
 
+municipal_data_merged <- municipal_data_merged %>% 
+  left_join(shapes_df_list[["NUTS0"]] %>% st_drop_geometry())
+
+municipal_data_merged <-municipal_data_merged %>% 
+  left_join(shapes_df_list[["NUTS1"]] %>% st_drop_geometry())
+
+municipal_data_merged <-municipal_data_merged %>% 
+  left_join(shapes_df_list[["NUTS2"]] %>% st_drop_geometry())
+
+municipal_data_merged <-municipal_data_merged %>% 
+  left_join(shapes_df_list[["NUTS3"]] %>% st_drop_geometry())
+
+
 rm(list = setdiff(ls(), c("municipal_data_merged", "shapes_df_list")))
 

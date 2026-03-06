@@ -1,9 +1,10 @@
 library(shiny)
-library(tmap)
+library(leaflet)
 library(plotly)
 library(dplyr)
 library(DT)
 library(bslib)
+library(sf)
 
 # source('/Volumes/T7 Shield/FRES/DB_Comunale/micro_dashboard/LOAD_DATA.r')
 # source('/Volumes/T7 Shield/FRES/DB_Comunale/micro_dashboard/tests/LOAD_DATA_TEST.r')
@@ -12,12 +13,9 @@ source('/Volumes/T7 Shield/FRES/DB_Comunale/micro_dashboard/LOAD_DATA_v2.r')
 # source("/Volumes/T7 Shield/FRES/DB_Comunale/micro_dashboard/compute_median_by_nuts.r")
 source("/Volumes/T7 Shield/FRES/DB_Comunale/micro_dashboard/aggregate_by_nuts.r")
 
-
 LEVELS <- c("Municipal", "NUTS3", "NUTS2", "NUTS1", "NUTS0")
 AGGREGATION_CHOICES <- c("Mean", "Median", "Sum")
 VARIABLES_CHOICES <- names(municipal_data_merged)[14:164]
-
-tmap_mode("view")
 
 ui <- fluidPage(
   theme = bslib::bs_theme(
@@ -146,7 +144,7 @@ ui <- fluidPage(
           div(class = "flex-main",
               mainPanel(
                 tabsetPanel(id = "map_tabs", type = "pills",
-                            tabPanel("Map", br(), tmapOutput("map")),
+                            tabPanel("Map", br(), leaflet::leafletOutput("map_leaflet", height = "600px")),
                             tabPanel("Data", br(), DTOutput("map_table"))
                 )
               )
@@ -167,7 +165,8 @@ ui <- fluidPage(
           div(class = "flex-main",
               mainPanel(
                 tabsetPanel(id = "ts_tabs", type = "pills",
-                            tabPanel("Chart", br(), plotlyOutput("ts_plot"))
+                            tabPanel("Chart", br(), plotlyOutput("ts_plot")),
+                            tabPanel("Data", br(), DTOutput("ts_table"))
                 )
               )
           )
@@ -185,7 +184,6 @@ server <- function(input, output, session) {
   })
   
   output$year_select_ui <- renderUI({
-    
     req(municipal_data_merged)
     req("year" %in% names(municipal_data_merged))
     
@@ -203,17 +201,16 @@ server <- function(input, output, session) {
     )
   })
   
-  
   # 1. Initialize the empty widget
   output$comune_select_wrapper_1 <- renderUI({
     selectizeInput(
       "selected_comune_map", 
       "Search and Select comune:", 
-      choices = sort(unique(municipal_data_merged$COMUNE)), # Leave empty initially
+      choices = sort(unique(municipal_data_merged$COMUNE)),
       multiple = TRUE,
       options = list(
         placeholder = 'Type to search...',
-        loadThrottle = 100 # Wait 300ms after typing stops before searching
+        loadThrottle = 100
       )
     )
   })
@@ -225,12 +222,11 @@ server <- function(input, output, session) {
     
     updateSelectizeInput(
       session, 
-      "selected_comune", 
+      "selected_comune_map", 
       choices = choices, 
-      server = TRUE # This enables fast searching/suggestions as you type
+      server = TRUE
     )
   })
-  
   
   map_table_data <- reactive({
     req(municipal_data_merged, input$variable, input$year_select, input$level_map)
@@ -244,27 +240,64 @@ server <- function(input, output, session) {
           filter(year == input$year_select)
       } else {
         municipal_data_merged %>% 
-          filter(year == input$year_select, COMUNE == input$selected_comune_map)
+          filter(year == input$year_select, COMUNE %in% input$selected_comune_map)
       }
     }
   })
   
-  
-  
-  output$map <- renderTmap({
-    req(map_table_data(), input$variable)
-    
-    tm_shape(map_table_data()) +
-      tm_polygons(input$variable)
+  # MAP - base widget (leaflet)
+  output$map_leaflet <- leaflet::renderLeaflet({
+    leaflet::leaflet(options = leaflet::leafletOptions(preferCanvas = TRUE)) %>%
+      leaflet::addProviderTiles(leaflet::providers$CartoDB.Positron)
   })
   
+  # Observer to handle map updates
+  observe({
+    req(map_table_data(), input$variable)
+    g0 <- map_table_data()
+    
+    bb <- sf::st_bbox(g0)
+    xmin <- unname(as.numeric(bb["xmin"]))
+    ymin <- unname(as.numeric(bb["ymin"]))
+    xmax <- unname(as.numeric(bb["xmax"]))
+    ymax <- unname(as.numeric(bb["ymax"]))
+    
+    pal <- leaflet::colorNumeric(
+      palette = "YlOrRd", 
+      domain = g0[[input$variable]], 
+      na.color = "transparent"
+    )
+    
+    leaflet::leafletProxy("map_leaflet", data = g0) %>%
+      leaflet::clearGroup("nuts") %>%
+      leaflet::clearControls() %>%
+      leaflet::fitBounds(xmin, ymin, xmax, ymax) %>%
+      leaflet::addPolygons(
+        group       = "nuts",
+        fillColor   = ~pal(get(input$variable)),
+        fillOpacity = 0.85,
+        color       = "grey40",
+        weight      = 0.4,
+        opacity     = 1,
+        label       = ~paste0(input$variable, ": ", round(get(input$variable), 2))
+      ) %>%
+      leaflet::addLegend(
+        position = "bottomright",
+        pal = pal,
+        values = ~get(input$variable),
+        title = input$variable,
+        opacity = 0.85
+      )
+  })
   
-  
-  
+  outputOptions(output, "map_leaflet", suspendWhenHidden = FALSE)
   
   output$map_table <- DT::renderDT({
     req(map_table_data())
-    df <- map_table_data() %>% st_drop_geometry()
+    df <- map_table_data() 
+    if(inherits(df, "sf")) {
+      df <- sf::st_drop_geometry(df)
+    }
     
     validate(need(nrow(df) > 0, "No data available for the selected year/variable."))
     
@@ -282,9 +315,6 @@ server <- function(input, output, session) {
       )
     )
   })
-  
-  
-  
   
   # TIME SERIES
   output$ts_var_select <- renderUI({
@@ -311,19 +341,16 @@ server <- function(input, output, session) {
     )
   })
   
-  
-  
-  
   # 1. Initialize the empty widget
   output$comune_select_wrapper <- renderUI({
     selectizeInput(
       "selected_comune", 
       "Search and Select comune:", 
-      choices = sort(unique(municipal_data_merged$COMUNE)), # Leave empty initially
+      choices = sort(unique(municipal_data_merged$COMUNE)),
       multiple = TRUE,
       options = list(
         placeholder = 'Type to search...',
-        loadThrottle = 100 # Wait 300ms after typing stops before searching
+        loadThrottle = 100
       )
     )
   })
@@ -337,21 +364,29 @@ server <- function(input, output, session) {
       session, 
       "selected_comune", 
       choices = choices, 
-      server = TRUE # This enables fast searching/suggestions as you type
+      server = TRUE
     )
   })
   
-  output$ts_plot <- renderPlotly({
-    # Use req() to ensure selected_comune exists before plotting
+  # Create a reactive dataset for the time series panel
+  ts_table_data <- reactive({
     req(municipal_data_merged, input$ts_variable, input$date_range, input$selected_comune)
     
-    df <- municipal_data_merged %>%
+    municipal_data_merged %>%
       filter(
         year >= input$date_range[1],
         year <= input$date_range[2],
         COMUNE %in% input$selected_comune
       ) %>%
       arrange(year)
+  })
+  
+  # Update plot to use the reactive dataset
+  output$ts_plot <- renderPlotly({
+    df <- ts_table_data()
+    if(inherits(df, "sf")) {
+      df <- sf::st_drop_geometry(df)
+    }
     
     plot_ly(
       df,
@@ -365,6 +400,32 @@ server <- function(input, output, session) {
         xaxis = list(title = "Year", tickformat = "d"),
         yaxis = list(title = input$ts_variable)
       )
+  })
+  
+  # Render the data table
+  output$ts_table <- DT::renderDT({
+    req(ts_table_data())
+    
+    df <- ts_table_data() 
+    if(inherits(df, "sf")) {
+      df <- sf::st_drop_geometry(df)
+    }
+    
+    validate(need(nrow(df) > 0, "No data available for the selected parameters."))
+    
+    DT::datatable(
+      df,
+      rownames = FALSE,
+      options = list(
+        scrollX = TRUE,
+        pageLength = 20,
+        lengthMenu = list(
+          c(20, 50, 100, 500, -1),
+          c("20", "50", "100", "500", "All")
+        ),
+        dom = "flrtip"
+      )
+    )
   })
 }
 
