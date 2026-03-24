@@ -11,9 +11,14 @@ library(sf)
 library(purrr)
 library(tidyr)
 
-# ---------------- PATHS ----------------
+# ---------------- PARAMS ----------------
 base_path  <- "/Volumes/T7 Shield/FRES/DB_Comunale"
+
+setwd(base_path)
+
 rdata_path <- file.path(base_path, "RData")
+
+draw_samples <- TRUE
 
 # ---------------- HELPERS ----------------
 standardize_names <- function(df) {
@@ -343,7 +348,9 @@ municipal_data_NO_NUTS <- municipal_data_merged
 # ---------------- Merge Municipal data with NUTS codes ---------------- 
 
 
-nuts_munic_codes_file <- "NUTS_Municipal_codes.xlsx"
+nuts_munic_codes_file <- file.path(base_path, "micro_dashboard/NUTS_Municipal_codes.xlsx")
+
+
 
 nuts_shp_files <- c(
   '/Volumes/T7 Shield/FRES/macro_dashboard/data/Geometrie/Shapefile_NUTS0.shp',
@@ -448,7 +455,6 @@ municipal_data_nuts <- municipal_data_nuts %>%
 
 
 #### SAMPLING #####
-draw_samples <- TRUE
 if(isTRUE(draw_samples)) {
   set.seed(123)
   sampled_codes <- sample(unique(municipal_data_nuts$PRO_COM_T), 100)
