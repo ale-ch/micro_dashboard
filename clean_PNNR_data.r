@@ -25,56 +25,33 @@ load("/Volumes/T7 Shield/FRES/DB_Comunale/RData/TO_CLEAN/PNNR.RData")
 
 names(Data4)
 
-
-Data4$Finanziamento.PNRR.x
-Data4$Finanziamento.PNRR.y
-
-
-names(Data4)[which(str_ends(names(Data4) , "\\.y|\\.x"))]
-
-
-Data5 <- Data4 %>% 
-  select(which(!duplicated(as.list(.)))) %>% 
-  select(-cup)
-
-names(Data5)[which(str_ends(names(Data5) , "\\.y|\\.x"))]
-
-str_replace(Data5$Finanziamento.Regione, ",", ".")
-Data5$Finanziamento.Regione == Data5$finanziamento_regione
-which(!(str_replace(Data5$Finanziamento.Regione, ",", ".") == Data5$finanziamento_regione))
-str_replace(Data5$Finanziamento.Regione, ",", ".")[18606]
-Data5$finanziamento_regione[18606]
-
-str_replace(Data5$Finanziamento.Regione, ",", ".")[18607]
-Data5$finanziamento_regione[18607]
-
-# names(Data5)[which(str_ends(names(Data5) , "\\.y|\\.x"))] <- str_remove(names(Data5)[which(str_ends(names(Data5) , "\\.y|\\.x"))], "\\.x")
-
-
-standardize_names(Data5)
-
-
-
-
-
-
-
 ####################
 
 df <- Data4 %>% 
   select(1:12, 17:28, Data.Inizio.Progetto.Effettiva)
 
-df <- standardize_names(df)
+df_renamed <- df[, 13:26] %>% 
+  mutate(
+    across(1:11, as.numeric)
+  )
 
+df_renamed <- standardize_names(df_renamed)
+
+df2 <- df[, 1:12] %>% 
+  st_drop_geometry() %>% 
+  bind_cols(df_renamed) %>% 
+  st_as_sf()
 
 library(dplyr)
 library(lubridate)
 
-df_summary <- df %>%
-  mutate(date_col = dmy(date_col),
+df_summary <- df2 %>%
+  mutate(date_col = dmy(data_inizio_progetto_effettiva),
          year = year(date_col)) %>%
-  group_by(year) %>%
-  summarise(across(where(is.numeric), sum, na.rm = TRUE))
+  group_by(year, PRO_COM_T) %>%
+  summarise(across(where(is.numeric), sum, na.rm = TRUE)) %>% 
+  ungroup()
+
 
 
 
