@@ -50,7 +50,7 @@ comuni <- comuni %>%
 #  filter(!duplicated(pro_com_t))
 
 comuni_region <- comuni %>% 
-  select(pro_com_t, regione,macro_area4, ripartizione_istat5) %>% 
+  select(pro_com_t, comune, regione,macro_area4, ripartizione_istat5) %>% 
   filter(!duplicated(pro_com_t))
 
 
@@ -68,7 +68,7 @@ joined <- left_join(comuni_sum, comuni_region) %>%
     year = anno
   )
 
-saveRDS(joined, "/Volumes/T7 Shield/FRES/DB_Comunale/RData/TO_CLEAN/CLEANED/db_comuni_summed_total.RDS")
+# saveRDS(joined, "/Volumes/T7 Shield/FRES/DB_Comunale/RData/TO_CLEAN/CLEANED/db_comuni_summed_total.RDS")
 
 # db_comuni_summed <- readRDS("/Volumes/T7 Shield/FRES/DB_Comunale/RData/TO_CLEAN/CLEANED/db_comuni_summed.RDS")
 
