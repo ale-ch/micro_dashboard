@@ -64,6 +64,6 @@ df_summary
 
 
 
-saveRDS(df_summary, "/Volumes/T7 Shield/FRES/DB_Comunale/RData/TO_CLEAN/CLEANED/PNNR_summed.RDA")
+# saveRDS(df_summary, "/Volumes/T7 Shield/FRES/DB_Comunale/RData/TO_CLEAN/CLEANED/PNNR_summed.RDA")
 
-
+df_summary <- readRDS("/Volumes/T7 Shield/FRES/DB_Comunale/RData/TO_CLEAN/CLEANED/PNNR_summed.RDA")
