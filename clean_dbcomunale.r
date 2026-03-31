@@ -30,13 +30,6 @@ comuni <- readRDS('/Volumes/T7 Shield/FRES/DB_Comunale/RData/TO_CLEAN/comuni_nog
 
 ####################
 
-#comuni <- comuni %>%
-#  as.data.frame() %>% 
-#  mutate(
-#    pro_com_t = str_pad(as.character(pro_com), width = 6, side = "left", pad = "0")
-#  ) %>% 
-#  select(-(38:46))
-
 comuni <- comuni %>%
   as.data.frame() %>% 
   mutate(
@@ -44,10 +37,6 @@ comuni <- comuni %>%
   ) %>% 
   select(-(38:45))
 
-
-#comuni_region <- comuni %>% 
-#  select(pro_com_t, regione,macro_area4, ripartizione_istat5, geometry) %>% 
-#  filter(!duplicated(pro_com_t))
 
 comuni_region <- comuni %>% 
   select(pro_com_t, comune, regione,macro_area4, ripartizione_istat5) %>% 
@@ -72,4 +61,5 @@ joined <- left_join(comuni_sum, comuni_region) %>%
 
 # db_comuni_summed <- readRDS("/Volumes/T7 Shield/FRES/DB_Comunale/RData/TO_CLEAN/CLEANED/db_comuni_summed.RDS")
 
-# db_comuni_summed$pro_com_t %in% municipal_data_merged$PRO_COM_T
+
+fuel_prices_summed <- readRDS("/Volumes/T7 Shield/FRES/DB_Comunale/RData/TO_CLEAN/CLEANED/db_comuni_summed_total.RDS")

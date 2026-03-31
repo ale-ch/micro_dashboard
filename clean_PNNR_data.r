@@ -47,23 +47,17 @@ df2 <- df[, 1:12] %>%
          year = year(date_col))
 
 
-
-#df_summary <- df2[1:200, ] %>%
-#  group_by(year, PRO_COM_T) %>%
-#  summarise(across(where(is.numeric), sum, na.rm = TRUE)) %>% 
-#  ungroup()
-
 df_summary <- df2 %>%
   group_by(year, PRO_COM_T) %>%
   summarise(across(where(is.numeric), sum, na.rm = TRUE)) %>% 
-  ungroup()
+  ungroup() %>% 
+  mutate(
+    PRO_COM_T = str_pad(as.character(PRO_COM_T), width = 6, side = "left", pad = "0")
+  )
 
 
 df_summary
-# saveRDS(df_summary, "PNNR_summed.RDA")
-
-
 
 # saveRDS(df_summary, "/Volumes/T7 Shield/FRES/DB_Comunale/RData/TO_CLEAN/CLEANED/PNNR_summed.RDA")
 
-df_summary <- readRDS("/Volumes/T7 Shield/FRES/DB_Comunale/RData/TO_CLEAN/CLEANED/PNNR_summed.RDA")
+PNNR_summed <- readRDS("/Volumes/T7 Shield/FRES/DB_Comunale/RData/TO_CLEAN/CLEANED/PNNR_summed.RDA")
