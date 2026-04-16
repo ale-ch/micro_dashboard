@@ -4,20 +4,12 @@ library(stringr)
 library(sf)
 library(purrr)
 library(tidyr)
-library(readxl)
-library(dplyr)
-library(stringr)
-library(sf)
-library(purrr)
-library(tidyr)
+library(lubridate)
 
 # ---------------- PARAMS ----------------
 base_path  <- "/Volumes/T7 Shield/FRES/DB_Comunale"
-
 setwd(base_path)
-
 rdata_path <- file.path(base_path, "RData")
-
 draw_samples <- FALSE
 
 # ---------------- HELPERS ----------------
@@ -30,15 +22,12 @@ standardize_names <- function(df) {
 }
 
 prep_procom_t <- function(df, ref_area, time) {
-  
   ref_area <- rlang::ensym(ref_area)
   time     <- rlang::ensym(time)
   
   df %>%
     as.data.frame() %>% 
-    filter(
-      str_detect(!!ref_area, "^[0-9.]+$")
-    ) %>%
+    filter(str_detect(!!ref_area, "^[0-9.]+$")) %>%
     rename(PRO_COM_T = !!ref_area,
            year      = !!time) %>%
     mutate(
@@ -52,14 +41,66 @@ prep_procom_t <- function(df, ref_area, time) {
     fill(PRO_COM_T, .direction = "down")
 }
 
-
 # ---------------- LOAD SHAPE ----------------
 comuni <- st_read(
   file.path(base_path, "Limiti01012025/Com01012025/Com01012025_WGS84.shp"),
   quiet = TRUE
 )
 
-# ---------------- LOAD RDATA IN TEMP ENV ----------------
+# ---------------- PREP DATA 2: FUEL PRICES ----------------
+comuni_nogeom <- readRDS(file.path(base_path, "RData/TO_CLEAN/comuni_nogeom.RDS"))
+
+comuni_nogeom <- comuni_nogeom %>%
+  as.data.frame() %>% 
+  mutate(
+    pro_com_t = str_pad(as.character(pro_com), width = 6, side = "left", pad = "0")
+  ) %>% 
+  select(-(38:45))
+
+comuni_region <- comuni_nogeom %>% 
+  select(pro_com_t, comune, regione, macro_area4, ripartizione_istat5) %>% 
+  filter(!duplicated(pro_com_t))
+
+comuni_sum <- comuni_nogeom %>% 
+  group_by(pro_com_t, anno) %>% 
+  reframe(
+    across(3:7, median, na.rm = TRUE),
+    across(25:33, sum, na.rm = TRUE)
+  )
+
+fuel_prices_summed <- left_join(comuni_sum, comuni_region, by = "pro_com_t") %>% 
+  rename(
+    PRO_COM_T = pro_com_t,
+    year = anno
+  )
+
+# ---------------- PREP DATA 3: PNNR ----------------
+load(file.path(base_path, "RData/TO_CLEAN/PNNR.RData")) # Loads Data4
+
+df_pnnr <- Data4 %>% 
+  select(1:12, 17:28, Data.Inizio.Progetto.Prevista)
+
+df_renamed <- df_pnnr[, 13:26] %>% 
+  mutate(across(1:11, as.numeric))
+
+df_renamed <- standardize_names(df_renamed)
+
+df2 <- df_pnnr[, 1:12] %>% 
+  st_drop_geometry() %>% 
+  bind_cols(df_renamed) %>% 
+  st_as_sf() %>%
+  mutate(date_col = dmy(data_inizio_progetto_prevista),
+         year = year(date_col))
+
+PNNR_summed <- df2 %>%
+  group_by(year, PRO_COM_T) %>%
+  summarise(across(where(is.numeric), sum, na.rm = TRUE)) %>% 
+  ungroup() %>% 
+  mutate(
+    PRO_COM_T = str_pad(as.character(PRO_COM_T), width = 6, side = "left", pad = "0")
+  )
+
+# ---------------- PREP MAIN DB ----------------
 raw_env <- new.env()
 rdata_files <- list.files(rdata_path, pattern="\\.RData$", full.names=TRUE)
 walk(rdata_files, ~ load(.x, envir = raw_env))
@@ -68,79 +109,49 @@ data_list <- mget(ls(raw_env), envir = raw_env) %>%
   keep(is.data.frame) %>%
   map(standardize_names)
 
-
-
 rm(raw_env)
 
-# ---------------- PREP ----------------
-data_list$addetti_TOT <-
-  prep_procom_t(data_list$addetti_TOT, ref_area, time_period) %>%
-  rename(n_workers = osservazione) %>% 
-  select(-data_type)
+# Prepping individual tables
+data_list$addetti_TOT <- prep_procom_t(data_list$addetti_TOT, ref_area, time_period) %>%
+  rename(n_workers = osservazione) %>% select(-data_type)
 
-data_list$Altitudine_TOT_2014_2022 <-
-  prep_procom_t(data_list$Altitudine_TOT_2014_2022,
-                codice_istat_del_comune_alfanumerico, anno) %>%
+data_list$Altitudine_TOT_2014_2022 <- prep_procom_t(data_list$Altitudine_TOT_2014_2022, codice_istat_del_comune_alfanumerico, anno) %>%
   mutate(altitudine_del_centro_metri = as.numeric(altitudine_del_centro_metri))
 
-
 names(data_list$panel_italiana)[3:26] <- paste0(names(data_list$panel_italiana)[3:26], "_italian")
-data_list$panel_italiana <-
-  prep_procom_t(data_list$panel_italiana, codice_comune, anno) %>%
+data_list$panel_italiana <- prep_procom_t(data_list$panel_italiana, codice_comune, anno) %>%
   mutate(across(3:26, as.numeric))
-
 
 names(data_list$panel_straniera)[3:26] <- paste0(names(data_list$panel_straniera)[3:26], "_foreign")
-data_list$panel_straniera <-
-  prep_procom_t(data_list$panel_straniera, codice_comune, anno) %>%
+data_list$panel_straniera <- prep_procom_t(data_list$panel_straniera, codice_comune, anno) %>%
   mutate(across(3:26, as.numeric))
 
-
-data_list$db_capacita_tota <-
-  prep_procom_t(data_list$db_capacita_tota, na, x2014) %>%
+data_list$db_capacita_tota <- prep_procom_t(data_list$db_capacita_tota, na, x2014) %>%
   mutate(across(3:26, as.numeric))
 
-data_list$Redditi_tot <-
-  prep_procom_t(data_list$Redditi_tot, codice_istat_comune, anno_di_imposta)
+data_list$Redditi_tot <- prep_procom_t(data_list$Redditi_tot, codice_istat_comune, anno_di_imposta)
 
-data_list$results_gini_con_mediana <-
-  prep_procom_t(data_list$results_gini_con_mediana,
-                codice_istat_comune, anno_di_imposta)
+data_list$results_gini_con_mediana <- prep_procom_t(data_list$results_gini_con_mediana, codice_istat_comune, anno_di_imposta)
 
-data_list$UL_TOT <-
-  prep_procom_t(data_list$UL_TOT, ref_area, time_period) %>%
-  rename(n_firms = osservazione) %>% 
-  select(-data_type)
+data_list$UL_TOT <- prep_procom_t(data_list$UL_TOT, ref_area, time_period) %>%
+  rename(n_firms = osservazione) %>% select(-data_type)
 
-data_list$comuni_stats_all <-
-  prep_procom_t(data_list$comuni_stats_all, pro_com, anno)
+data_list$comuni_stats_all <- prep_procom_t(data_list$comuni_stats_all, pro_com, anno)
 
-data_list$amministrazioni_comunali <-
-  prep_procom_t(data_list$amministrazioni_comunali,
-                istat_codice_comune, anno)
+data_list$amministrazioni_comunali <- prep_procom_t(data_list$amministrazioni_comunali, istat_codice_comune, anno)
 
-data_list$df_coesione_fine_mergiato_cut <-
-  prep_procom_t(data_list$df_coesione_fine_mergiato_cut,
-                cod_comune, anno)
+data_list$df_coesione_fine_mergiato_cut <- prep_procom_t(data_list$df_coesione_fine_mergiato_cut, cod_comune, anno)
 
-data_list$MAQUI <-
-  prep_procom_t(data_list$MAQUI, codice_comune, anno)
+data_list$MAQUI <- prep_procom_t(data_list$MAQUI, codice_comune, anno)
 
-# ---------------- SAMPLING ----------------
-comuni <- comuni
+# Merge internal main datasets
+comuni_meta <- comuni %>% st_drop_geometry() %>% as.data.frame()
 
-# ---------------- STEP 1 ----------------
-# Drop geometry → pure data.frame
-comuni_meta <- comuni %>%
-  st_drop_geometry() %>%
-  as.data.frame()
-
-# ---------------- STEP 2 ----------------
 merge_meta_T <- function(df) {
   left_join(comuni_meta, df, by = "PRO_COM_T")
 }
 
-merged_T <- list(
+all_dfs <- list(
   merge_meta_T(data_list$addetti_TOT),
   merge_meta_T(data_list$Altitudine_TOT_2014_2022),
   merge_meta_T(data_list$Redditi_tot),
@@ -154,37 +165,21 @@ merged_T <- list(
   merge_meta_T(data_list$MAQUI)
 )
 
-
-
-all_dfs <- c(merged_T)
-
-# ---------------- STEP 3 ----------------
 data_merged <- Reduce(
-  function(x, y) full_join(x, y,
-                           by = intersect(names(x), names(y))),
+  function(x, y) full_join(x, y, by = intersect(names(x), names(y))),
   all_dfs
-) %>%
-  as.data.frame()
+) %>% as.data.frame()
 
-# ---------------- STEP 4 ----------------
 municipal_data_merged <- left_join(
   comuni,
   data_merged,
   by = intersect(names(comuni_meta), names(data_merged))
 ) %>% 
-  select(
-    all_of(1:13),
-    where(is.numeric),
-    -cod_comune
-  ) 
+  select(all_of(1:13), where(is.numeric), -cod_comune) 
 
-
-
-
-
+# Rename large variable set
 municipal_data_merged <- municipal_data_merged %>% rename(
   `Number of workers` = `n_workers`,
-  # `Municipality code` = `cod_comune`,
   `Altitude of the center in meters` = `altitudine_del_centro_metri`,
   `Coastal municipality` = `comune_litoraneo`,
   `Coastal zones` = `zone_costiere`,
@@ -338,36 +333,21 @@ municipal_data_merged <- municipal_data_merged %>% rename(
   `Municipal Administrative Quality Index` = `maqi`
 )
 
-municipal_data_NO_NUTS <- municipal_data_merged
-
-
-# RESULT:
-# data_final  → single sf object with all variables + geometry
-
-
-# ---------------- Merge Municipal data with NUTS codes ---------------- 
-
-
+# NUTS processing
 nuts_munic_codes_file <- file.path(base_path, "micro_dashboard/NUTS_Municipal_codes.xlsx")
 
-
-
 nuts_shp_files <- c(
-  '/Volumes/T7 Shield/FRES/macro_dashboard/data/Geometrie/Shapefile_NUTS0.shp',
-  '/Volumes/T7 Shield/FRES/macro_dashboard/data/Geometrie/Shapefile_NUTS1.shp',
-  '/Volumes/T7 Shield/FRES/macro_dashboard/data/Geometrie/Shapefile_NUTS2.shp',
-  '/Volumes/T7 Shield/FRES/macro_dashboard/data/Geometrie/Shapefile_NUTS3.shp'
+  file.path(base_path, '../macro_dashboard/data/Geometrie/Shapefile_NUTS0.shp'),
+  file.path(base_path, '../macro_dashboard/data/Geometrie/Shapefile_NUTS1.shp'),
+  file.path(base_path, '../macro_dashboard/data/Geometrie/Shapefile_NUTS2.shp'),
+  file.path(base_path, '../macro_dashboard/data/Geometrie/Shapefile_NUTS3.shp')
 )
 
 shape_names <- c("NUTS0", "NUTS1", "NUTS2", "NUTS3")
-
-shapes_df_list <- lapply(nuts_shp_files, function(x) st_read(x,quiet = TRUE))
+shapes_df_list <- lapply(nuts_shp_files, function(x) st_read(x, quiet = TRUE))
 names(shapes_df_list) <- shape_names
 shapes_df_list <- lapply(shapes_df_list, function(x) {
-  x %>% 
-    filter(
-      str_detect(.[[1]], "IT")
-    )
+  x %>% filter(str_detect(.[[1]], "IT"))
 })
 
 shapes_df_list <- lapply(shapes_df_list, function(df) {
@@ -375,17 +355,13 @@ shapes_df_list <- lapply(shapes_df_list, function(df) {
   df
 })
 
-
-nuts_munic_codes <- read_excel(nuts_munic_codes_file)
-nuts_munic_codes <- nuts_munic_codes %>% 
+nuts_munic_codes <- read_excel(nuts_munic_codes_file) %>% 
   standardize_names() %>% 
   rename(
     PRO_COM_T = codice_comune_alfanumerico,
     NUTS3_Code = codice_nuts3_2024
   ) %>% 
-  select(
-    PRO_COM_T, comune, NUTS3_Code
-  ) %>% 
+  select(PRO_COM_T, comune, NUTS3_Code) %>% 
   mutate(
     NUTS2_Code = str_sub(NUTS3_Code, 1, 4),
     NUTS1_Code = str_sub(NUTS3_Code, 1, 3),
@@ -400,20 +376,12 @@ nuts_munic_codes <- nuts_munic_codes %>%
   left_join(
     municipal_data_merged %>% 
       select(COMUNE, PRO_COM_T) %>% 
-      rename(
-        comune = COMUNE
-      ) %>% 
+      rename(comune = COMUNE) %>% 
       st_drop_geometry() %>% 
       unique(), 
     by = "comune") %>% 
-  select(
-    3:7
-  ) %>% 
-  rename(
-    PRO_COM_T = PRO_COM_T.y
-  )
-
-
+  select(3:7) %>% 
+  rename(PRO_COM_T = PRO_COM_T.y)
 
 municipal_data_nuts <- left_join(municipal_data_merged, nuts_munic_codes, by = "PRO_COM_T") %>% 
   select(-`ISTAT region code`) %>% 
@@ -424,60 +392,86 @@ municipal_data_nuts <- left_join(municipal_data_merged, nuts_munic_codes, by = "
     NUTS0 = NUTS0_Code,
   )
 
-
-
-
 duplicated_codes <- municipal_data_nuts %>% 
   group_by(PRO_COM_T) %>% 
-  reframe(
-    count = n()
-  ) %>% 
+  reframe(count = n()) %>% 
   filter(count > 11)  %>% 
   select(PRO_COM_T) %>% 
   unname() %>% 
   unlist()
 
-
 municipal_data_nuts_filtered <- municipal_data_nuts %>% 
   filter(PRO_COM_T %in% duplicated_codes, !is.na(year)) %>% 
   distinct(PRO_COM_T, year, .keep_all = TRUE)
 
-
 municipal_data_nuts <- municipal_data_nuts %>% 
-  filter(
-    !(PRO_COM_T %in% duplicated_codes)
-  ) %>% 
-  bind_rows(
-    municipal_data_nuts_filtered
-  )
+  filter(!(PRO_COM_T %in% duplicated_codes)) %>% 
+  bind_rows(municipal_data_nuts_filtered)
 
-
-
-
-#### SAMPLING #####
+# Sampling
 if(isTRUE(draw_samples)) {
   set.seed(123)
   sampled_codes <- sample(unique(municipal_data_nuts$PRO_COM_T), 100)
-  
-  municipal_data_nuts <- municipal_data_nuts %>%
-    filter(PRO_COM_T %in% sampled_codes)
+  municipal_data_nuts <- municipal_data_nuts %>% filter(PRO_COM_T %in% sampled_codes)
 }
 
-municipal_data_merged <- municipal_data_nuts
-
-
-municipal_data_merged <- municipal_data_merged %>% 
-  left_join(shapes_df_list[["NUTS0"]] %>% st_drop_geometry())
-
-municipal_data_merged <-municipal_data_merged %>% 
-  left_join(shapes_df_list[["NUTS1"]] %>% st_drop_geometry())
-
-municipal_data_merged <-municipal_data_merged %>% 
-  left_join(shapes_df_list[["NUTS2"]] %>% st_drop_geometry())
-
-municipal_data_merged <-municipal_data_merged %>% 
+municipal_data_merged <- municipal_data_nuts %>% 
+  left_join(shapes_df_list[["NUTS0"]] %>% st_drop_geometry()) %>%
+  left_join(shapes_df_list[["NUTS1"]] %>% st_drop_geometry()) %>%
+  left_join(shapes_df_list[["NUTS2"]] %>% st_drop_geometry()) %>%
   left_join(shapes_df_list[["NUTS3"]] %>% st_drop_geometry())
 
+# ---------------- FINAL MERGE ----------------
+joined <- left_join(municipal_data_merged %>% st_drop_geometry(), 
+                    PNNR_summed %>% 
+                      st_drop_geometry() %>% 
+                      select(-(3:11)),
+                    by = intersect(names(municipal_data_merged %>% st_drop_geometry()), 
+                                   names(PNNR_summed %>% st_drop_geometry() %>% select(-(3:11))))
+)
 
-rm(list = setdiff(ls(), c("municipal_data_merged", "shapes_df_list")))
+joined <- left_join(joined, 
+                    fuel_prices_summed %>% 
+                      st_drop_geometry() %>% 
+                      select(-(17:20)),
+                    by = intersect(names(joined), 
+                                   names(fuel_prices_summed %>% st_drop_geometry() %>% select(-(17:20))))
+)
 
+joined_shp <- left_join(joined, comuni, by = intersect(names(joined), names(comuni))) %>% 
+  st_as_sf()
+
+renaming_map <- c(
+  "finanziamento_pnrr"           = "PNRR Funding",
+  "finanziamento_regione"        = "Regional Funding",
+  "finanziamento_provincia"      = "Provincial Funding",
+  "finanziamento_comune"         = "Municipal Funding",
+  "finanziamento_altro_pubblico" = "Other Public Funding",
+  "finanziamento_privato"        = "Private Funding",
+  "finanziamento_da_reperire"    = "Funding to be Sourced",
+  "finanziamento_pnc"            = "PNC Funding",
+  "finanziamento_totale"         = "Total Funding",
+  "finanziamento_ue_no_pnrr"     = "EU Non-PNRR Funding",
+  "finanziamento_altri_fondi"    = "Other Funds",
+  "prezzo_Altro"                 = "Price: Other",
+  "prezzo_Benzina"               = "Price: Petrol",
+  "prezzo_Gasolio"               = "Price: Diesel",
+  "prezzo_GPL"                   = "Price: LPG",
+  "prezzo_Metano"                = "Price: Methane",
+  "covid_naz_raw"                = "COVID National Measures",
+  "covid_emergenza"              = "COVID State of Emergency",
+  "covid_reg"                    = "COVID Regional Measures",
+  "covid_prov"                   = "COVID Provincial Measures",
+  "guerra_ukr"                   = "Ukraine War",
+  "fase_invasione"               = "UKR War Invasion Phase",
+  "fase_crisi_energetica"        = "Energy Crisis Phase",
+  "obbligo_prezzo_medio"         = "Average Price Display Obligation",
+  "modifica_obbligo"             = "Obligation Amendment"
+)
+
+names(joined_shp)[names(joined_shp) %in% names(renaming_map)] <- renaming_map[names(joined_shp)[names(joined_shp) %in% names(renaming_map)]]
+
+# saveRDS(joined_shp, file.path(base_path, "RData/Merged/municipal_data_merged.RDS"))
+
+# Clean up environment to keep only essential object if needed (optional)
+rm(list = setdiff(ls(), c("joined_shp", "shapes_df_list")))

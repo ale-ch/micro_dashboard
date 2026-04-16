@@ -4,10 +4,21 @@ library(stringr)
 library(sf)
 library(purrr)
 library(tidyr)
+library(readxl)
+library(dplyr)
+library(stringr)
+library(sf)
+library(purrr)
+library(tidyr)
 
-# ---------------- PATHS ----------------
+# ---------------- PARAMS ----------------
 base_path  <- "/Volumes/T7 Shield/FRES/DB_Comunale"
+
+setwd(base_path)
+
 rdata_path <- file.path(base_path, "RData")
+
+draw_samples <- FALSE
 
 # ---------------- HELPERS ----------------
 standardize_names <- function(df) {
@@ -27,7 +38,7 @@ prep_procom_t <- function(df, ref_area, time) {
     as.data.frame() %>% 
     filter(
       str_detect(!!ref_area, "^[0-9.]+$")
-      ) %>%
+    ) %>%
     rename(PRO_COM_T = !!ref_area,
            year      = !!time) %>%
     mutate(
@@ -106,32 +117,21 @@ data_list$comuni_stats_all <-
 
 data_list$amministrazioni_comunali <-
   prep_procom_t(data_list$amministrazioni_comunali,
-              istat_codice_comune, anno)
+                istat_codice_comune, anno)
 
 data_list$df_coesione_fine_mergiato_cut <-
   prep_procom_t(data_list$df_coesione_fine_mergiato_cut,
-              cod_comune, anno)
+                cod_comune, anno)
 
 data_list$MAQUI <-
   prep_procom_t(data_list$MAQUI, codice_comune, anno)
 
 # ---------------- SAMPLING ----------------
-draw_samples <- FALSE
-
-if(isTRUE(draw_samples)) {
-  set.seed(123)
-  sampled_codes_T <- sample(comuni$PRO_COM_T, 100)
-  
-  comuni_sampled_T <- comuni %>%
-    filter(PRO_COM_T %in% sampled_codes_T)
-} else {
-  comuni_sampled_T <- comuni
-}
-
+comuni <- comuni
 
 # ---------------- STEP 1 ----------------
 # Drop geometry → pure data.frame
-comuni_meta <- comuni_sampled_T %>%
+comuni_meta <- comuni %>%
   st_drop_geometry() %>%
   as.data.frame()
 
@@ -168,7 +168,7 @@ data_merged <- Reduce(
 
 # ---------------- STEP 4 ----------------
 municipal_data_merged <- left_join(
-  comuni_sampled_T,
+  comuni,
   data_merged,
   by = intersect(names(comuni_meta), names(data_merged))
 ) %>% 
@@ -338,9 +338,146 @@ municipal_data_merged <- municipal_data_merged %>% rename(
   `Municipal Administrative Quality Index` = `maqi`
 )
 
+municipal_data_NO_NUTS <- municipal_data_merged
+
 
 # RESULT:
 # data_final  → single sf object with all variables + geometry
 
-rm(list = setdiff(ls(), "municipal_data_merged"))
+
+# ---------------- Merge Municipal data with NUTS codes ---------------- 
+
+
+nuts_munic_codes_file <- file.path(base_path, "micro_dashboard/NUTS_Municipal_codes.xlsx")
+
+
+
+nuts_shp_files <- c(
+  '/Volumes/T7 Shield/FRES/macro_dashboard/data/Geometrie/Shapefile_NUTS0.shp',
+  '/Volumes/T7 Shield/FRES/macro_dashboard/data/Geometrie/Shapefile_NUTS1.shp',
+  '/Volumes/T7 Shield/FRES/macro_dashboard/data/Geometrie/Shapefile_NUTS2.shp',
+  '/Volumes/T7 Shield/FRES/macro_dashboard/data/Geometrie/Shapefile_NUTS3.shp'
+)
+
+shape_names <- c("NUTS0", "NUTS1", "NUTS2", "NUTS3")
+
+shapes_df_list <- lapply(nuts_shp_files, function(x) st_read(x,quiet = TRUE))
+names(shapes_df_list) <- shape_names
+shapes_df_list <- lapply(shapes_df_list, function(x) {
+  x %>% 
+    filter(
+      str_detect(.[[1]], "IT")
+    )
+})
+
+shapes_df_list <- lapply(shapes_df_list, function(df) {
+  names(df)[1] <- substr(names(df)[1], 1, 5)
+  df
+})
+
+
+nuts_munic_codes <- read_excel(nuts_munic_codes_file)
+nuts_munic_codes <- nuts_munic_codes %>% 
+  standardize_names() %>% 
+  rename(
+    PRO_COM_T = codice_comune_alfanumerico,
+    NUTS3_Code = codice_nuts3_2024
+  ) %>% 
+  select(
+    PRO_COM_T, comune, NUTS3_Code
+  ) %>% 
+  mutate(
+    NUTS2_Code = str_sub(NUTS3_Code, 1, 4),
+    NUTS1_Code = str_sub(NUTS3_Code, 1, 3),
+    NUTS0_Code = str_sub(NUTS3_Code, 1, 2)
+  ) %>%
+  mutate(comune = case_when(
+    comune == "Murisengo Monferrato" ~ "Murisengo",
+    comune == "Castegnero Nanto" ~ "Castegnero",
+    comune == "Tripi - Abakainon" ~ "Tripi",
+    TRUE ~ comune
+  )) %>% 
+  left_join(
+    municipal_data_merged %>% 
+      select(COMUNE, PRO_COM_T) %>% 
+      rename(
+        comune = COMUNE
+      ) %>% 
+      st_drop_geometry() %>% 
+      unique(), 
+    by = "comune") %>% 
+  select(
+    3:7
+  ) %>% 
+  rename(
+    PRO_COM_T = PRO_COM_T.y
+  )
+
+
+
+municipal_data_nuts <- left_join(municipal_data_merged, nuts_munic_codes, by = "PRO_COM_T") %>% 
+  select(-`ISTAT region code`) %>% 
+  rename(
+    NUTS3 = NUTS3_Code,
+    NUTS2 = NUTS2_Code,
+    NUTS1 = NUTS1_Code,
+    NUTS0 = NUTS0_Code,
+  )
+
+
+
+
+duplicated_codes <- municipal_data_nuts %>% 
+  group_by(PRO_COM_T) %>% 
+  reframe(
+    count = n()
+  ) %>% 
+  filter(count > 11)  %>% 
+  select(PRO_COM_T) %>% 
+  unname() %>% 
+  unlist()
+
+
+municipal_data_nuts_filtered <- municipal_data_nuts %>% 
+  filter(PRO_COM_T %in% duplicated_codes, !is.na(year)) %>% 
+  distinct(PRO_COM_T, year, .keep_all = TRUE)
+
+
+municipal_data_nuts <- municipal_data_nuts %>% 
+  filter(
+    !(PRO_COM_T %in% duplicated_codes)
+  ) %>% 
+  bind_rows(
+    municipal_data_nuts_filtered
+  )
+
+
+
+
+#### SAMPLING #####
+if(isTRUE(draw_samples)) {
+  set.seed(123)
+  sampled_codes <- sample(unique(municipal_data_nuts$PRO_COM_T), 100)
+  
+  municipal_data_nuts <- municipal_data_nuts %>%
+    filter(PRO_COM_T %in% sampled_codes)
+}
+
+municipal_data_merged <- municipal_data_nuts
+
+
+municipal_data_merged <- municipal_data_merged %>% 
+  left_join(shapes_df_list[["NUTS0"]] %>% st_drop_geometry())
+
+municipal_data_merged <-municipal_data_merged %>% 
+  left_join(shapes_df_list[["NUTS1"]] %>% st_drop_geometry())
+
+municipal_data_merged <-municipal_data_merged %>% 
+  left_join(shapes_df_list[["NUTS2"]] %>% st_drop_geometry())
+
+municipal_data_merged <-municipal_data_merged %>% 
+  left_join(shapes_df_list[["NUTS3"]] %>% st_drop_geometry())
+
+
+rm(list = setdiff(ls(), c("municipal_data_merged", "shapes_df_list")))
 
