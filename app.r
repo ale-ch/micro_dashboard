@@ -4,6 +4,7 @@ library(plotly)
 library(dplyr)
 library(DT)
 library(bslib)
+library(rlang)
 
 setwd('/Volumes/T7 Shield/FRES/DB_Comunale/micro_dashboard')
 
@@ -11,7 +12,6 @@ setwd('/Volumes/T7 Shield/FRES/DB_Comunale/micro_dashboard')
 source('/Volumes/T7 Shield/FRES/DB_Comunale/micro_dashboard/LOAD_DATA_TEST.r')
 source("/Volumes/T7 Shield/FRES/DB_Comunale/micro_dashboard/aggregate_by_nuts.r")
 
-# Load metadata table (update path if necessary)
 metadata_df <- read.csv("/Volumes/T7 Shield/FRES/DB_Comunale/micro_dashboard/metadata.csv")
 
 LEVELS <- c("Municipal", "NUTS3", "NUTS2", "NUTS1", "NUTS0")
@@ -129,7 +129,28 @@ ui <- fluidPage(
       )
     ),
     
-    # Metadata Tab
+    # New Benchmarking Tab
+    tabPanel(
+      "Benchmarking",
+      div(class = "flex-container",
+          div(class = "flex-sidebar",
+              sidebarPanel(
+                uiOutput("bench_var_select"),
+                uiOutput("bench_year_select_ui"),
+                selectizeInput("bench_region_select", "Filter by Region (Optional):", choices = NULL, multiple = TRUE),
+                selectizeInput("bench_province_select", "Filter by Province (Optional):", choices = NULL, multiple = TRUE)
+              )
+          ),
+          div(class = "flex-main",
+              mainPanel(
+                h3("Municipal Ranking & Regional Comparison"),
+                br(),
+                DTOutput("bench_table")
+              )
+          )
+      )
+    ),
+    
     tabPanel(
       "Metadata",
       div(
@@ -159,15 +180,106 @@ server <- function(input, output, session) {
     updateSelectizeInput(session, "ts_region_select", choices = regs)
     updateSelectizeInput(session, "ts_province_select", choices = provs)
     updateSelectizeInput(session, "ts_comune_select", choices = coms, server = TRUE)
+    
+    updateSelectizeInput(session, "bench_region_select", choices = regs)
+    updateSelectizeInput(session, "bench_province_select", choices = provs)
   })
   
-  # --- METADATA SERVER COMPONENT ---
   output$metadata_table <- DT::renderDT({
     req(metadata_df)
-    metadata_df <- metadata_df %>%  arrange(Domain)
     DT::datatable(metadata_df, rownames = FALSE, options = list(
       scrollX = TRUE, pageLength = 20, 
       lengthMenu = list(c(20, 50, 100, 200, -1), c("20", "50", "100", "200", "All")),
+      dom = "flrtip"))
+  })
+  
+  # --- BENCHMARKING CASCADING LOGIC & SERVER COMPONENTS ---
+  observeEvent(input$bench_region_select, {
+    if (!is.null(input$bench_region_select)) {
+      filtered <- municipal_data_merged[municipal_data_merged$NUTS2_Name %in% input$bench_region_select, ]
+      updateSelectizeInput(session, "bench_province_select", choices = sort(unique(filtered$NUTS3_Name)), selected = input$bench_province_select)
+    } else {
+      updateSelectizeInput(session, "bench_province_select", choices = sort(unique(municipal_data_merged$NUTS3_Name)))
+    }
+  }, ignoreNULL = FALSE, ignoreInit = TRUE)
+  
+  output$bench_var_select <- renderUI({
+    req(municipal_data_merged)
+    selectInput("bench_variable", "Select variable", choices = VARIABLES_CHOICES)
+  })
+  
+  output$bench_year_select_ui <- renderUI({
+    req(municipal_data_merged)
+    req("year" %in% names(municipal_data_merged))
+    yrs <- sort(unique(municipal_data_merged$year))
+    selectInput(inputId = "bench_year_select", label = "Select year", choices = yrs,
+                selected = max(yrs), multiple = FALSE, selectize = TRUE)
+  })
+  
+  bench_data <- reactive({
+    req(municipal_data_merged, input$bench_variable, input$bench_year_select)
+    var_name <- input$bench_variable
+    
+    df <- municipal_data_merged 
+    if (inherits(df, "sf")) df <- sf::st_drop_geometry(df)
+    
+    result <- df %>% 
+      select(year, COMUNE, NUTS3_Name, NUTS2_Name, NUTS1_Name, NUTS0_Name, all_of(var_name)) %>%
+      group_by(year, NUTS3_Name) %>%
+      mutate(`NUTS 3 value (mean)` = mean(.data[[var_name]], na.rm = TRUE)) %>% ungroup() %>%
+      group_by(year, NUTS2_Name) %>%
+      mutate(`NUTS 2 value (mean)` = mean(.data[[var_name]], na.rm = TRUE)) %>% ungroup() %>%
+      group_by(year, NUTS1_Name) %>%
+      mutate(`NUTS 1 value (mean)` = mean(.data[[var_name]], na.rm = TRUE)) %>% ungroup() %>%
+      group_by(year, NUTS0_Name) %>%
+      mutate(`NUTS 0 value (mean)` = mean(.data[[var_name]], na.rm = TRUE)) %>% ungroup() %>%
+      arrange(COMUNE, year) %>%
+      group_by(COMUNE) %>%
+      mutate(
+        `YoY Abs` = .data[[var_name]] - lag(.data[[var_name]]),
+        `YoY%` = (`YoY Abs` / lag(.data[[var_name]])) * 100,
+        `YoY Abs NUTS 3` = `NUTS 3 value (mean)` - lag(`NUTS 3 value (mean)`),
+        `YoY% NUTS 3` = (`YoY Abs NUTS 3` / lag(`NUTS 3 value (mean)`)) * 100,
+        `YoY Abs NUTS 2` = `NUTS 2 value (mean)` - lag(`NUTS 2 value (mean)`),
+        `YoY% NUTS 2` = (`YoY Abs NUTS 2` / lag(`NUTS 2 value (mean)`)) * 100,
+        `YoY Abs NUTS 1` = `NUTS 1 value (mean)` - lag(`NUTS 1 value (mean)`),
+        `YoY% NUTS 1` = (`YoY Abs NUTS 1` / lag(`NUTS 1 value (mean)`)) * 100,
+        `YoY Abs NUTS 0` = `NUTS 0 value (mean)` - lag(`NUTS 0 value (mean)`),
+        `YoY% NUTS 0` = (`YoY Abs NUTS 0` / lag(`NUTS 0 value (mean)`)) * 100
+      ) %>%
+      ungroup() %>%
+      filter(year == as.numeric(input$bench_year_select))
+    
+    if (!is.null(input$bench_region_select)) {
+      result <- result %>% filter(NUTS2_Name %in% input$bench_region_select)
+    }
+    
+    if (!is.null(input$bench_province_select)) {
+      result <- result %>% filter(NUTS3_Name %in% input$bench_province_select)
+    }
+    
+    result <- result %>%
+      rename(Value = !!sym(var_name)) %>%
+      select(
+        year, COMUNE, Value, 
+        `NUTS 3 value (mean)`, `NUTS 2 value (mean)`, `NUTS 1 value (mean)`, `NUTS 0 value (mean)`,
+        `YoY%`, `YoY Abs`, 
+        `YoY% NUTS 3`, `YoY Abs NUTS 3`, 
+        `YoY% NUTS 2`, `YoY Abs NUTS 2`, 
+        `YoY% NUTS 1`, `YoY Abs NUTS 1`, 
+        `YoY% NUTS 0`, `YoY Abs NUTS 0`
+      ) %>% 
+      arrange(desc(`YoY%`)) %>%
+      mutate(across(where(is.numeric), ~round(., 2)))
+    
+    return(result)
+  })
+  
+  output$bench_table <- DT::renderDT({
+    req(bench_data())
+    DT::datatable(bench_data(), rownames = FALSE, class = 'cell-border stripe benchmarking-table', options = list(
+      scrollX = TRUE, pageLength = 20,
+      lengthMenu = list(c(20, 50, 100, 500, -1), c("20", "50", "100", "500", "All")),
       dom = "flrtip"))
   })
   
@@ -231,7 +343,6 @@ server <- function(input, output, session) {
     }
   }, ignoreNULL = FALSE, ignoreInit = TRUE)
   
-  
   # --- MAP SERVER COMPONENTS ---
   output$var_select <- renderUI({
     req(municipal_data_merged)
@@ -294,7 +405,7 @@ server <- function(input, output, session) {
   
   ts_table_data <- reactive({
     req(municipal_data_merged, input$ts_variable, input$date_range)
-    req(input$ts_comune_select) # Halts execution until a municipality is selected
+    req(input$ts_comune_select)
     
     municipal_data_merged %>% 
       filter(

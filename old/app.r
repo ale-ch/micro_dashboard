@@ -11,9 +11,11 @@ setwd('/Volumes/T7 Shield/FRES/DB_Comunale/micro_dashboard')
 source('/Volumes/T7 Shield/FRES/DB_Comunale/micro_dashboard/LOAD_DATA_TEST.r')
 source("/Volumes/T7 Shield/FRES/DB_Comunale/micro_dashboard/aggregate_by_nuts.r")
 
+# Load metadata table (update path if necessary)
+metadata_df <- read.csv("/Volumes/T7 Shield/FRES/DB_Comunale/micro_dashboard/metadata.csv")
+
 LEVELS <- c("Municipal", "NUTS3", "NUTS2", "NUTS1", "NUTS0")
 AGGREGATION_CHOICES <- c("Mean", "Median", "Sum")
-
 
 excluded_names <- c("COD_RIP", "COD_REG", "COD_PROV", "COD_CM", "COD_UTS", "PRO_COM", "PRO_COM_T", "COMUNE", "COMUNE_A", "CC_UTS", "Shape_Leng", "Shape_Area", "year", "NUTS3","NUTS2","NUTS1","NUTS0","NUTS0_Name","NUTS1_Name","NUTS2_Name","NUTS3_Name", "geometry")
 VARIABLES_CHOICES <- names(municipal_data_merged)[which(!(names(municipal_data_merged) %in% excluded_names))]
@@ -125,7 +127,19 @@ ui <- fluidPage(
               )
           )
       )
+    ),
+    
+    # Metadata Tab
+    tabPanel(
+      "Metadata",
+      div(
+        style = "padding: 20px;",
+        h3("Variables Metadata"),
+        br(),
+        DTOutput("metadata_table")
+      )
     )
+    
   )
 )
 
@@ -145,6 +159,16 @@ server <- function(input, output, session) {
     updateSelectizeInput(session, "ts_region_select", choices = regs)
     updateSelectizeInput(session, "ts_province_select", choices = provs)
     updateSelectizeInput(session, "ts_comune_select", choices = coms, server = TRUE)
+  })
+  
+  # --- METADATA SERVER COMPONENT ---
+  output$metadata_table <- DT::renderDT({
+    req(metadata_df)
+    metadata_df <- metadata_df %>%  arrange(Domain)
+    DT::datatable(metadata_df, rownames = FALSE, options = list(
+      scrollX = TRUE, pageLength = 20, 
+      lengthMenu = list(c(20, 50, 100, 200, -1), c("20", "50", "100", "200", "All")),
+      dom = "flrtip"))
   })
   
   # --- MAP CASCADING LOGIC ---
