@@ -9,7 +9,6 @@ setwd('/Volumes/T7 Shield/FRES/DB_Comunale/micro_dashboard')
 
 # source('/Volumes/T7 Shield/FRES/DB_Comunale/micro_dashboard/LOAD_DATA.r')
 source('/Volumes/T7 Shield/FRES/DB_Comunale/micro_dashboard/LOAD_DATA_TEST.r')
-# source("/Volumes/T7 Shield/FRES/DB_Comunale/micro_dashboard/compute_median_by_nuts.r")
 source("/Volumes/T7 Shield/FRES/DB_Comunale/micro_dashboard/aggregate_by_nuts.r")
 
 LEVELS <- c("Municipal", "NUTS3", "NUTS2", "NUTS1", "NUTS0")
@@ -18,9 +17,6 @@ AGGREGATION_CHOICES <- c("Mean", "Median", "Sum")
 
 excluded_names <- c("COD_RIP", "COD_REG", "COD_PROV", "COD_CM", "COD_UTS", "PRO_COM", "PRO_COM_T", "COMUNE", "COMUNE_A", "CC_UTS", "Shape_Leng", "Shape_Area", "year", "NUTS3","NUTS2","NUTS1","NUTS0","NUTS0_Name","NUTS1_Name","NUTS2_Name","NUTS3_Name", "geometry")
 VARIABLES_CHOICES <- names(municipal_data_merged)[which(!(names(municipal_data_merged) %in% excluded_names))]
-
-# VARIABLES_CHOICES <- names(municipal_data_merged)[14:164]
-# VARIABLES_CHOICES <- names(municipal_data_merged)[14:197]
 
 tmap_mode("view")
 
@@ -289,26 +285,18 @@ server <- function(input, output, session) {
     df <- ts_table_data()
     req(nrow(df) > 0)
     
-    plot_ly(df, x = ~year, y = as.formula(paste0("~`", input$ts_variable, "`")),
+    #plot_ly(df, x = ~year, y = as.formula(paste0("~`", input$ts_variable, "`")),
+    #        color = ~COMUNE, type = "scatter", mode = "lines+markers") %>%
+    #  layout(xaxis = list(title = "Year", tickformat = "d"), yaxis = list(title = input$ts_variable))
+    
+    df <- df %>% select(COMUNE, year, all_of(input$ts_variable))
+    plot_ly(df, 
+            x = ~year, y = as.formula(paste0("~`", input$ts_variable, "`")),
             color = ~COMUNE, type = "scatter", mode = "lines+markers") %>%
-      layout(xaxis = list(title = "Year", tickformat = "d"), yaxis = list(title = input$ts_variable))
+      # layout(xaxis = list(title = "Year", tickformat = "d"), yaxis = list(title = input$ts_variable)) %>%
+      add_trace(x = ~year, y = ~get(input$ts_variable))
+    
   })
-  
-  #output$ts_plot <- renderPlotly({
-  #  df <- ts_table_data()
-  #  req(nrow(df) > 0)
-  #  
-  #  plot_ly(df, x = ~year, y = as.formula(paste0("~`", input$ts_variable, "`")),
-  #          color = ~COMUNE, type = "scatter", mode = "lines+markers") %>%
-  #    layout(
-  #        title = "Year", 
-  #      xaxis = list(
-  #        tickformat = "d",
-  #        range = c(min(df$year), max(df$year))
-  #      ), 
-  #      yaxis = list(title = input$ts_variable)
-  #    )
-  #})
   
   output$ts_table <- DT::renderDT({
     req(ts_table_data())
