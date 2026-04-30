@@ -32,8 +32,6 @@ shapes_df_list <- lapply(shapes_df_list, function(df) {
 
 municipal_data_merged <- readRDS(file.path(base_path, "RData/Merged/municipal_data_merged.RDS"))
 
-municipal_data_merged$PRO_COM_T
-
 n <- 1000
 sampled_codes <- sample(municipal_data_merged$PRO_COM_T, n, replace = FALSE)
 

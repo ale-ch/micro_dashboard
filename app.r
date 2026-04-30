@@ -8,6 +8,9 @@ library(rlang)
 
 setwd('/Volumes/T7 Shield/FRES/DB_Comunale/micro_dashboard')
 
+# Map the "static" web path to the local "figure" directory for HTML elements
+addResourcePath("static", normalizePath("figure"))
+
 # source('/Volumes/T7 Shield/FRES/DB_Comunale/micro_dashboard/LOAD_DATA.r')
 source('/Volumes/T7 Shield/FRES/DB_Comunale/micro_dashboard/LOAD_DATA_TEST.r')
 source("/Volumes/T7 Shield/FRES/DB_Comunale/micro_dashboard/aggregate_by_nuts.r")
@@ -74,7 +77,7 @@ ui <- fluidPage(
       "Welcome",
       div(
         style = "text-align:center; margin-top:60px;",
-        tags$img(src = "static/FEEM_logo.png", style = "max-width:250px; height:auto;"),
+        tags$img(src = "static/FEEM_MUR-FRES_Logo-Colori.png", style = "max-width:250px; height:auto;"),
         br(), br(),
         h2("Welcome to the dashboard"),
         p("Explore municipal data and indicators.")
@@ -98,7 +101,11 @@ ui <- fluidPage(
           div(class = "flex-main",
               mainPanel(
                 tabsetPanel(id = "map_tabs", type = "pills",
-                            tabPanel("Map", br(), tmapOutput("map")),
+                            tabPanel("Map", 
+                                     br(), 
+                                     downloadButton("download_map_png", "Download map (PNG)", class = "btn-primary btn-sm", style = "margin-bottom:15px;"), 
+                                     br(), 
+                                     tmapOutput("map")),
                             tabPanel("Data", br(), DTOutput("map_table"))
                 )
               )
@@ -129,7 +136,6 @@ ui <- fluidPage(
       )
     ),
     
-    # New Benchmarking Tab
     tabPanel(
       "Benchmarking",
       div(class = "flex-container",
@@ -372,22 +378,27 @@ server <- function(input, output, session) {
     }
   })
   
-  output$map <- renderTmap({
+  # Map object reactive for rendering and downloading
+  map_obj <- reactive({
     req(map_table_data(), input$variable)
-    tm_shape(map_table_data()) + tm_polygons(input$variable)
+    tm_shape(map_table_data()) + 
+      tm_polygons(input$variable) + 
+      tm_logo("figure/FEEM_MUR-FRES_Logo-Colori.png", position = c("right", "bottom"), height = 2)
   })
   
-  #output$map_table <- DT::renderDT({
-  #  req(map_table_data())
-  #  df <- map_table_data()
-  #  if(inherits(df, "sf")) df <- sf::st_drop_geometry(df)
-  #  
-  #  validate(need(nrow(df) > 0, "No data available for the selected year/variable."))
-  #  DT::datatable(df, rownames = FALSE, options = list(
-  #    scrollX = TRUE, pageLength = 20, 
-  #    lengthMenu = list(c(20, 50, 100, 500, -1), c("20", "50", "100", "500", "All")),
-  #    dom = "flrtip"))
-  #})
+  output$map <- renderTmap({
+    map_obj()
+  })
+  
+  # Map download handler
+  output$download_map_png <- downloadHandler(
+    filename = function() {
+      paste0("map_", input$level_map, "_", input$variable, "_", input$year_select, ".png")
+    },
+    content = function(file) {
+      tmap::tmap_save(map_obj(), filename = file, width = 1920, height = 1080)
+    }
+  )
   
   output$map_table <- DT::renderDT({
     req(map_table_data(), input$variable)
@@ -436,24 +447,34 @@ server <- function(input, output, session) {
     req(nrow(df) > 0)
     
     df <- df %>% select(COMUNE, year, all_of(input$ts_variable))
-    plot_ly(df, 
-            x = ~year, y = as.formula(paste0("~`", input$ts_variable, "`")),
-            color = ~COMUNE, type = "scatter", mode = "lines+markers") %>%
-      add_trace(x = ~year, y = ~get(input$ts_variable))
+    p <- plot_ly(df, 
+                 x = ~year, y = as.formula(paste0("~`", input$ts_variable, "`")),
+                 color = ~COMUNE, type = "scatter", mode = "lines+markers") %>%
+      add_trace(x = ~year, y = ~get(input$ts_variable)) %>%
+      layout(
+        margin = list(b = 100),
+        images = list(
+          list(
+            source = "static/FEEM_MUR-FRES_Logo-Colori.png",
+            xref = "paper", yref = "paper",
+            x = 0.97, y = -0.15,
+            xanchor = "right", yanchor = "top",
+            sizex = 0.20, sizey = 0.20,
+            opacity = 0.95, layer = "above"
+          )
+        )
+      ) %>%
+      config(
+        modeBarButtonsToRemove = c("lasso2d", "select2d"),
+        toImageButtonOptions = list(
+          format = "png",
+          filename = paste0("FEEM_timeseries_", input$ts_variable),
+          height = 650, width = 1200, scale = 2
+        )
+      )
     
+    p
   })
-  
-  #output$ts_table <- DT::renderDT({
-  #  req(ts_table_data())
-  #  df <- ts_table_data() 
-  #  if(inherits(df, "sf")) df <- sf::st_drop_geometry(df)
-  #  
-  #  validate(need(nrow(df) > 0, "No data available for the selected parameters."))
-  #  DT::datatable(df, rownames = FALSE, options = list(
-  #    scrollX = TRUE, pageLength = 20,
-  #    lengthMenu = list(c(20, 50, 100, 500, -1), c("20", "50", "100", "500", "All")),
-  #    dom = "flrtip"))
-  #})
   
   output$ts_table <- DT::renderDT({
     req(ts_table_data(), input$ts_variable)
