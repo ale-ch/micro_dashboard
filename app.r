@@ -377,10 +377,25 @@ server <- function(input, output, session) {
     tm_shape(map_table_data()) + tm_polygons(input$variable)
   })
   
+  #output$map_table <- DT::renderDT({
+  #  req(map_table_data())
+  #  df <- map_table_data()
+  #  if(inherits(df, "sf")) df <- sf::st_drop_geometry(df)
+  #  
+  #  validate(need(nrow(df) > 0, "No data available for the selected year/variable."))
+  #  DT::datatable(df, rownames = FALSE, options = list(
+  #    scrollX = TRUE, pageLength = 20, 
+  #    lengthMenu = list(c(20, 50, 100, 500, -1), c("20", "50", "100", "500", "All")),
+  #    dom = "flrtip"))
+  #})
+  
   output$map_table <- DT::renderDT({
-    req(map_table_data())
-    df <- map_table_data() 
+    req(map_table_data(), input$variable)
+    df <- map_table_data()
     if(inherits(df, "sf")) df <- sf::st_drop_geometry(df)
+    
+    df <- df %>% 
+      select(any_of(c("year", "PRO_COM_T", "COMUNE", "NUTS1_Name", "NUTS2_Name", "NUTS3_Name", input$variable)))
     
     validate(need(nrow(df) > 0, "No data available for the selected year/variable."))
     DT::datatable(df, rownames = FALSE, options = list(
@@ -428,10 +443,25 @@ server <- function(input, output, session) {
     
   })
   
+  #output$ts_table <- DT::renderDT({
+  #  req(ts_table_data())
+  #  df <- ts_table_data() 
+  #  if(inherits(df, "sf")) df <- sf::st_drop_geometry(df)
+  #  
+  #  validate(need(nrow(df) > 0, "No data available for the selected parameters."))
+  #  DT::datatable(df, rownames = FALSE, options = list(
+  #    scrollX = TRUE, pageLength = 20,
+  #    lengthMenu = list(c(20, 50, 100, 500, -1), c("20", "50", "100", "500", "All")),
+  #    dom = "flrtip"))
+  #})
+  
   output$ts_table <- DT::renderDT({
-    req(ts_table_data())
+    req(ts_table_data(), input$ts_variable)
     df <- ts_table_data() 
     if(inherits(df, "sf")) df <- sf::st_drop_geometry(df)
+    
+    df <- df %>% 
+      select(any_of(c("year", "PRO_COM_T", "COMUNE", "NUTS1_Name", "NUTS2_Name", "NUTS3_Name", input$ts_variable)))
     
     validate(need(nrow(df) > 0, "No data available for the selected parameters."))
     DT::datatable(df, rownames = FALSE, options = list(
