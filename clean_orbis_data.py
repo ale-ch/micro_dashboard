@@ -44,24 +44,14 @@ def wide_to_long_panel(df, id_columns):
     """
     Transform wide dataframe to long panel using pd.wide_to_long.
     Replaces "n.d." strings with NaN and converts yearly columns to numeric.
-    
-    Parameters:
-    -----------
-    df : pandas.DataFrame
-        Input dataframe with yearly columns
-    id_columns : list
-        List of ID column names
-    
-    Returns:
-    --------
-    pandas.DataFrame
-        Long panel with id_cols, yearly_cols, and 'year' column
     """
-    
-    # Make a copy to avoid modifying original
     df = df.copy()
+    df = df.replace("n.d.", pd.NA)
     
-    # Define the stubnames (base names of yearly columns without the year suffix)
+    for col in df.columns:
+        if col not in id_columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+    
     stubnames = [
         'totale_valore_della_produzione_migl_usd',
         'numero_dipendenti',
@@ -69,15 +59,6 @@ def wide_to_long_panel(df, id_columns):
         'fatturato_netto_migl_usd'
     ]
     
-    # Replace "n.d." strings with NaN in ALL columns (including yearly ones)
-    df = df.replace("n.d.", pd.NA)
-    
-    # Convert yearly columns to numeric (coerce errors to NaN)
-    for col in df.columns:
-        if col not in id_columns:
-            df[col] = pd.to_numeric(df[col], errors='coerce')
-    
-    # Use wide_to_long to reshape
     df_long = pd.wide_to_long(
         df,
         stubnames=stubnames,
@@ -87,71 +68,70 @@ def wide_to_long_panel(df, id_columns):
         suffix=r'\d{4}'
     ).reset_index()
     
-    # Convert year to int
     df_long['year'] = df_long['year'].astype(int)
-    
     return df_long
 
 
-def aggregate_by_year_city(df_long):
+def aggregate_by_year_city(df_long, keep_original=False):
     """
-    Aggregate the long panel dataframe by year and city.
-    Calculates mean of yearly columns (excluding NA values) and count of unique companies.
-    Keeps nuts1, nuts2, nuts3 columns (taking first value since they're constant per city).
-    
-    Parameters:
-    -----------
-    df_long : pandas.DataFrame
-        Long panel dataframe from wide_to_long_panel function
-    
-    Returns:
-    --------
-    pandas.DataFrame
-        Aggregated dataframe with year, city, nuts columns, means of yearly columns,
-        and count of unique companies
+    Aggregate by year and city. Removes numbers and leading spaces from city names.
+    Converts No/Sì to 0/1, sums binary columns, renames 'inactive' to 'active'.
     """
+    df_long = df_long.copy()
     
-    # Define the yearly columns to aggregate
-    yearly_columns = [
+    # Convert binary columns
+    binary_cols = ['inactive', 'quoted', 'branch', 'owndata', 'woco']
+    for col in binary_cols:
+        if col in df_long.columns:
+            df_long[col] = df_long[col].map({'No': 0, 'Sì': 1})
+    
+    # Rename inactive to active
+    if 'inactive' in df_long.columns:
+        df_long['active'] = 1 - df_long['inactive']
+        df_long = df_long.drop('inactive', axis=1)
+    
+    # Keep original city name if requested
+    if keep_original:
+        df_long['citt_latin_alphabet_original'] = df_long['citt_latin_alphabet']
+    
+    # Clean city names
+    df_long['citt_latin_alphabet'] = df_long['citt_latin_alphabet'].apply(
+        lambda x: re.sub(r'[0-9]', '', str(x)) if pd.notna(x) else x
+    )
+    df_long['citt_latin_alphabet'] = df_long['citt_latin_alphabet'].apply(
+        lambda x: x.lstrip() if isinstance(x, str) else x
+    )
+    df_long = df_long[df_long['citt_latin_alphabet'].str.len() > 0]
+    
+    # Define aggregation
+    yearly_cols = [
         'totale_valore_della_produzione_migl_usd',
         'numero_dipendenti',
         'fatturato_lordo_migl_usd',
         'fatturato_netto_migl_usd'
     ]
     
-    # Group by year and city, keep nuts columns (take first since they're constant per city)
-    result = df_long.groupby(['year', 'citt_latin_alphabet']).agg({
-        'totale_valore_della_produzione_migl_usd': 'mean',
-        'numero_dipendenti': 'mean',
-        'fatturato_lordo_migl_usd': 'mean',
-        'fatturato_netto_migl_usd': 'mean',
+    binary_cols_sum = ['active', 'quoted', 'branch', 'owndata', 'woco']
+    binary_cols_sum = [col for col in binary_cols_sum if col in df_long.columns]
+    
+    agg_dict = {col: 'mean' for col in yearly_cols}
+    agg_dict.update({col: 'sum' for col in binary_cols_sum})
+    agg_dict.update({
         'ragione_socialecaratteri_latini': 'nunique',
         'nuts1': 'first',
         'nuts2': 'first',
         'nuts3': 'first'
-    }).reset_index()
-    
-    # Rename the column for clarity
-    result = result.rename(columns={
-        'ragione_socialecaratteri_latini': 'unique_companies_count'
     })
     
-    # Reorder columns for better readability
-    column_order = [
-        'year',
-        'citt_latin_alphabet',
-        'nuts1',
-        'nuts2',
-        'nuts3',
-        'totale_valore_della_produzione_migl_usd',
-        'numero_dipendenti',
-        'fatturato_lordo_migl_usd',
-        'fatturato_netto_migl_usd',
-        'unique_companies_count'
-    ]
-    result = result[column_order]
+    if keep_original:
+        agg_dict['citt_latin_alphabet_original'] = 'first'
+    
+    result = df_long.groupby(['year', 'citt_latin_alphabet']).agg(agg_dict).reset_index()
+    result = result.rename(columns={'ragione_socialecaratteri_latini': 'unique_companies_count'})
     
     return result
+
+
 
 
 # Complete workflow example:
