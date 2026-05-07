@@ -96,7 +96,8 @@ def wide_to_long_panel(df, id_columns):
 def aggregate_by_year_city(df_long):
     """
     Aggregate the long panel dataframe by year and city.
-    Calculates mean of yearly columns and count of unique companies.
+    Calculates mean of yearly columns (excluding NA values) and count of unique companies.
+    Keeps nuts1, nuts2, nuts3 columns (taking first value since they're constant per city).
     
     Parameters:
     -----------
@@ -106,7 +107,7 @@ def aggregate_by_year_city(df_long):
     Returns:
     --------
     pandas.DataFrame
-        Aggregated dataframe with year, city, means of yearly columns,
+        Aggregated dataframe with year, city, nuts columns, means of yearly columns,
         and count of unique companies
     """
     
@@ -118,13 +119,16 @@ def aggregate_by_year_city(df_long):
         'fatturato_netto_migl_usd'
     ]
     
-    # Group by year and city
+    # Group by year and city, keep nuts columns (take first since they're constant per city)
     result = df_long.groupby(['year', 'citt_latin_alphabet']).agg({
         'totale_valore_della_produzione_migl_usd': 'mean',
         'numero_dipendenti': 'mean',
         'fatturato_lordo_migl_usd': 'mean',
         'fatturato_netto_migl_usd': 'mean',
-        'ragione_socialecaratteri_latini': 'nunique'
+        'ragione_socialecaratteri_latini': 'nunique',
+        'nuts1': 'first',
+        'nuts2': 'first',
+        'nuts3': 'first'
     }).reset_index()
     
     # Rename the column for clarity
@@ -132,7 +136,47 @@ def aggregate_by_year_city(df_long):
         'ragione_socialecaratteri_latini': 'unique_companies_count'
     })
     
+    # Reorder columns for better readability
+    column_order = [
+        'year',
+        'citt_latin_alphabet',
+        'nuts1',
+        'nuts2',
+        'nuts3',
+        'totale_valore_della_produzione_migl_usd',
+        'numero_dipendenti',
+        'fatturato_lordo_migl_usd',
+        'fatturato_netto_migl_usd',
+        'unique_companies_count'
+    ]
+    result = result[column_order]
+    
     return result
+
+
+# Complete workflow example:
+
+# Step 1: Define ID columns (including nuts1, nuts2, nuts3)
+id_columns = [
+    'ragione_socialecaratteri_latini',
+    'inactive',
+    'quoted', 
+    'branch',
+    'owndata',
+    'woco',
+    'citt_latin_alphabet',
+    'codice_iso_paese',
+    'codice_nace_rev_2_core_code_4_cifre',
+    'codice_di_consolidamento',
+    'nuts1',
+    'nuts2',
+    'nuts3',
+    'latitudine',
+    'longitudine',
+    'indirizzo_i_aggiuntivo_i_latitudine',
+    'indirizzo_i_aggiuntivo_i_longitudine',
+    'descrizione_dell_attivit_in_inglese'
+]
 
 
 # USAGE EXAMPLE with your specific column names:
