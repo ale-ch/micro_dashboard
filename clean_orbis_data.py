@@ -43,6 +43,7 @@ import re
 def wide_to_long_panel(df, id_columns):
     """
     Transform wide dataframe to long panel using pd.wide_to_long.
+    Replaces "n.d." strings with NaN and converts yearly columns to numeric.
     
     Parameters:
     -----------
@@ -57,6 +58,9 @@ def wide_to_long_panel(df, id_columns):
         Long panel with id_cols, yearly_cols, and 'year' column
     """
     
+    # Make a copy to avoid modifying original
+    df = df.copy()
+    
     # Define the stubnames (base names of yearly columns without the year suffix)
     stubnames = [
         'totale_valore_della_produzione_migl_usd',
@@ -64,6 +68,14 @@ def wide_to_long_panel(df, id_columns):
         'fatturato_lordo_migl_usd',
         'fatturato_netto_migl_usd'
     ]
+    
+    # Replace "n.d." strings with NaN in ALL columns (including yearly ones)
+    df = df.replace("n.d.", pd.NA)
+    
+    # Convert yearly columns to numeric (coerce errors to NaN)
+    for col in df.columns:
+        if col not in id_columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
     
     # Use wide_to_long to reshape
     df_long = pd.wide_to_long(
@@ -79,6 +91,48 @@ def wide_to_long_panel(df, id_columns):
     df_long['year'] = df_long['year'].astype(int)
     
     return df_long
+
+
+def aggregate_by_year_city(df_long):
+    """
+    Aggregate the long panel dataframe by year and city.
+    Calculates mean of yearly columns and count of unique companies.
+    
+    Parameters:
+    -----------
+    df_long : pandas.DataFrame
+        Long panel dataframe from wide_to_long_panel function
+    
+    Returns:
+    --------
+    pandas.DataFrame
+        Aggregated dataframe with year, city, means of yearly columns,
+        and count of unique companies
+    """
+    
+    # Define the yearly columns to aggregate
+    yearly_columns = [
+        'totale_valore_della_produzione_migl_usd',
+        'numero_dipendenti',
+        'fatturato_lordo_migl_usd',
+        'fatturato_netto_migl_usd'
+    ]
+    
+    # Group by year and city
+    result = df_long.groupby(['year', 'citt_latin_alphabet']).agg({
+        'totale_valore_della_produzione_migl_usd': 'mean',
+        'numero_dipendenti': 'mean',
+        'fatturato_lordo_migl_usd': 'mean',
+        'fatturato_netto_migl_usd': 'mean',
+        'ragione_socialecaratteri_latini': 'nunique'
+    }).reset_index()
+    
+    # Rename the column for clarity
+    result = result.rename(columns={
+        'ragione_socialecaratteri_latini': 'unique_companies_count'
+    })
+    
+    return result
 
 
 # USAGE EXAMPLE with your specific column names:
@@ -112,8 +166,21 @@ df_long = wide_to_long_panel(df, id_columns)
 print(df_long.head())
 print(df_long.columns.tolist())
 print(df_long['year'].unique())
+print(df_long[['totale_valore_della_produzione_migl_usd', 'numero_dipendenti']].isna().sum())
+print(df_long.dtypes)
 
 df_long.head(1000).to_csv("df_long.csv")
+
+df_aggregated = aggregate_by_year_city(df_long)
+
+# Step 4: View results
+print("#### AGGREGATED ####")
+print(df_aggregated.head(10))
+print(f"\nShape: {df_aggregated.shape}")
+print(f"\nYears range: {df_aggregated['year'].min()} - {df_aggregated['year'].max()}")
+print(f"\nUnique cities: {df_aggregated['citt_latin_alphabet'].nunique()}")
+
+df_aggregated.head(1000).to_csv("df_aggr.csv")
 
 # Write standardized column names to txt file
 # with open('column_names.txt', 'w') as f:
