@@ -196,6 +196,26 @@ if __name__ == '__main__':
     
     progressive_merge_aggregated(input_directory, output_file)
 
+
+
+    file1 = "/Volumes/T7 Shield/Downloads/processed_data/MASTER_ITA_AGGREGATED_FINAL.csv"
+    file2 = "/Volumes/T7 Shield/FRES/DB_Comunale/micro_dashboard/municipalities_names.csv"
+
+    # Load datasets
+    df1 = pd.read_csv(file1)
+    df2 = pd.read_csv(file2)
+
+    # Standardize names
+    df1["citt_latin_alphabet"] = df1["citt_latin_alphabet"].astype(str).str.strip()
+    df2["COMUNE"] = df2["COMUNE"].astype(str).str.strip()
+
+    # Keep only matching municipalities
+    df1_filtered = df1[df1["citt_latin_alphabet"].isin(df2["COMUNE"])]
+
+    # Save filtered file
+    output_file = "/Volumes/T7 Shield/Downloads/processed_data/MASTER_ITA_AGGREGATED_FINAL_filtered.csv"
+    df1_filtered.to_csv(output_file, index=False)
+
     end_time = time.time()
     
     print(f"Parallel processing took: {end_time - start_time:.2f} seconds")
