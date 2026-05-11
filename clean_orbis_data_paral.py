@@ -130,15 +130,84 @@ def process_pipeline_parallel(input_dir, output_dir):
         for future in as_completed(futures):
             print(future.result())
 
+def progressive_merge_aggregated(input_dir, output_filepath):
+    # Find all CSV files in the input directory
+    csv_files = glob.glob(os.path.join(input_dir, "*.csv"))
+    
+    if not csv_files:
+        print(f"No CSV files found in {input_dir}")
+        return
+        
+    print(f"Found {len(csv_files)} files to merge.")
+    
+    master_df = None
+    
+    # Define which columns need to be summed together when combining chunks
+    columns_to_sum = [
+        'totale_valore_della_produzione_migl_usd',
+        'numero_dipendenti',
+        'fatturato_lordo_migl_usd',
+        'fatturato_netto_migl_usd',
+        'active', 'quoted', 'branch', 'owndata', 'woco',
+        'unique_companies_count'
+    ]
+    
+    for i, file_path in enumerate(csv_files):
+        file_name = os.path.basename(file_path)
+        print(f"Processing [{i+1}/{len(csv_files)}]: {file_name}")
+        
+        try:
+            # 1. Load single CSV to keep memory usage low
+            current_df = pd.read_csv(file_path)
+            
+            if master_df is None:
+                master_df = current_df
+            else:
+                # 2. Combine the current master with the new chunk
+                combined_df = pd.concat([master_df, current_df], ignore_index=True)
+                
+                # 3. Dynamically build the aggregation dictionary based on present columns
+                agg_dict = {}
+                for col in combined_df.columns:
+                    if col in ['year', 'citt_latin_alphabet']:
+                        continue
+                    elif col in columns_to_sum:
+                        agg_dict[col] = 'sum'
+                    else:
+                        # For geographical data (nuts) or other strings, take the first occurrence
+                        agg_dict[col] = 'first'
+                
+                # 4. Perform the aggregation to merge duplicates between files
+                master_df = combined_df.groupby(['year', 'citt_latin_alphabet'], as_index=False).agg(agg_dict)
+                
+        except Exception as e:
+            print(f"Error processing {file_name}: {e}")
+            
+    # Save the final aggregated dataset
+    if master_df is not None:
+        # Ensure output directory exists
+        os.makedirs(os.path.dirname(output_filepath), exist_ok=True)
+        
+        master_df.to_csv(output_filepath, index=False)
+        print(f"\nSuccessfully created final dataset at: {output_filepath}")
+        print(f"Final shape: {master_df.shape}")
+
 if __name__ == '__main__':
-    input_directory = "/Volumes/T7 Shield/Downloads/raw_data/ITA"
+    # input_directory = "/Volumes/T7 Shield/Downloads/raw_data/ITA"
     # Using a different output directory to avoid collision if run concurrently
     # output_directory_parallel = "/Volumes/T7 Shield/Downloads/processed_data/ITA_CSV_PARALLEL"
-    input_directory = "/Volumes/T7 Shield/Downloads/raw_data/test/pipeline_test"
+    input_directory = "/Volumes/T7 Shield/Downloads/raw_data/ITA"
+    # input_directory = "/Volumes/T7 Shield/Downloads/raw_data/test/pipeline_test"
     output_directory_parallel = "/Volumes/T7 Shield/Downloads/processed_data/ITA" 
     
     start_time = time.time()
     process_pipeline_parallel(input_directory, output_directory_parallel)
+
+    input_directory = "/Volumes/T7 Shield/Downloads/processed_data/ITA"
+    output_file = "/Volumes/T7 Shield/Downloads/processed_data/MASTER_ITA_AGGREGATED_FINAL.csv"
+    
+    progressive_merge_aggregated(input_directory, output_file)
+
     end_time = time.time()
     
     print(f"Parallel processing took: {end_time - start_time:.2f} seconds")
