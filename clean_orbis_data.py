@@ -36,10 +36,6 @@ df.columns = [to_snake_case(col) for col in df.columns]
 # df = process_firm_data(df)
 
 
-
-import pandas as pd
-import re
-
 def wide_to_long_panel(df, id_columns):
     """
     Transform wide dataframe to long panel using pd.wide_to_long.
@@ -114,7 +110,7 @@ def aggregate_by_year_city(df_long, keep_original=False):
     binary_cols_sum = ['active', 'quoted', 'branch', 'owndata', 'woco']
     binary_cols_sum = [col for col in binary_cols_sum if col in df_long.columns]
     
-    agg_dict = {col: 'mean' for col in yearly_cols}
+    agg_dict = {col: 'sum' for col in yearly_cols}
     agg_dict.update({col: 'sum' for col in binary_cols_sum})
     agg_dict.update({
         'ragione_socialecaratteri_latini': 'nunique',
@@ -135,29 +131,6 @@ def aggregate_by_year_city(df_long, keep_original=False):
 
 
 # Complete workflow example:
-
-# Step 1: Define ID columns (including nuts1, nuts2, nuts3)
-id_columns = [
-    'ragione_socialecaratteri_latini',
-    'inactive',
-    'quoted', 
-    'branch',
-    'owndata',
-    'woco',
-    'citt_latin_alphabet',
-    'codice_iso_paese',
-    'codice_nace_rev_2_core_code_4_cifre',
-    'codice_di_consolidamento',
-    'nuts1',
-    'nuts2',
-    'nuts3',
-    'latitudine',
-    'longitudine',
-    'indirizzo_i_aggiuntivo_i_latitudine',
-    'indirizzo_i_aggiuntivo_i_longitudine',
-    'descrizione_dell_attivit_in_inglese'
-]
-
 
 # USAGE EXAMPLE with your specific column names:
 
@@ -193,9 +166,12 @@ print(df_long['year'].unique())
 print(df_long[['totale_valore_della_produzione_migl_usd', 'numero_dipendenti']].isna().sum())
 print(df_long.dtypes)
 
+# df_long.head(1000).to_csv("df_long.csv")
 df_long.head(1000).to_csv("df_long.csv")
 
-df_aggregated = aggregate_by_year_city(df_long)
+df_long_filtered = df_long[df_long['year'] >= 2014]
+
+df_aggregated = aggregate_by_year_city(df_long_filtered)
 
 # Step 4: View results
 print("#### AGGREGATED ####")
@@ -205,6 +181,7 @@ print(f"\nYears range: {df_aggregated['year'].min()} - {df_aggregated['year'].ma
 print(f"\nUnique cities: {df_aggregated['citt_latin_alphabet'].nunique()}")
 
 df_aggregated.head(1000).to_csv("df_aggr.csv")
+df_aggregated.to_csv("df_aggr_full.csv", index=False)
 
 # Write standardized column names to txt file
 # with open('column_names.txt', 'w') as f:
